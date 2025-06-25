@@ -13,6 +13,12 @@ class SceneWindow;
 
 namespace NodeEditor {
 
+    // Constants for pin ID calculation
+    static constexpr int PIN_ID_MULTIPLIER = 100;
+    static constexpr int TRANSFORM_PIN_OFFSET = 1;
+    static constexpr int SPRITE_PIN_OFFSET = 2;
+    static constexpr int PLAYER_PIN_OFFSET = 3;
+
     enum class NodeType {
         Entity,
         SpriteComponent,
@@ -23,6 +29,8 @@ namespace NodeEditor {
         PlayerAbilities,
         PlayerState,
         Transform,
+        Rotation,
+        Scale,
         Collider,
         RigidBody
     };
@@ -52,13 +60,30 @@ namespace NodeEditor {
         bool selected = false;
         EntityID associatedEntity = 0;
         
+        // Resize functionality
+        bool resizing = false;
+        ImVec2 minSize = ImVec2(120, 80);
+        ImVec2 maxSize = ImVec2(400, 300);
+        
         // Component-specific data
-        std::shared_ptr<Component> componentData;          Node(int nodeId, NodeType nodeType, const std::string& nodeName, ImVec2 pos);
-        void draw(ImVec2 displayPos = ImVec2(0, 0));
+        std::shared_ptr<Component> componentData;        Node(int nodeId, NodeType nodeType, const std::string& nodeName, ImVec2 pos);
+        void draw(ImVec2 displayPos = ImVec2(0, 0), float zoom = 1.0f);
         void drawSpriteNodeContent(ImVec2 nodePos, ImVec2 nodeSize);
+        void drawRotationNodeContent(ImVec2 nodePos, ImVec2 nodeSize);
+        void drawScaleNodeContent(ImVec2 nodePos, ImVec2 nodeSize);
         void drawTextureSelectionPopup();
+        void drawPins(ImDrawList* drawList, float zoom = 1.0f);
         bool isInside(ImVec2 point) const;
+        bool isOnResizeHandle(ImVec2 point) const;
         Pin* getPinById(int pinId);
+          // Helper methods
+        ImVec2 getNodeSize() const;
+        void updatePinPositions(ImVec2 nodePos, float zoom = 1.0f);
+        void setSize(ImVec2 newSize);
+        
+        // Image file utilities
+        static bool isImageFile(const std::string& extension);
+        static void scanDirectoryForImages(const std::string& directory, std::vector<std::string>& imageFiles);
     };
 
     struct Connection {
@@ -106,9 +131,18 @@ namespace NodeEditor {
         ImVec2 m_canvasPos;
         ImVec2 m_canvasSize;
         ImVec2 m_scrolling{0.0f, 0.0f};
+        float m_zoom = 1.0f;
+        float m_minZoom = 0.2f;
+        float m_maxZoom = 3.0f;
         bool m_dragging = false;
         int m_draggedNodeId = -1;
         ImVec2 m_dragOffset;
+        
+        // Node resizing
+        bool m_resizing = false;
+        int m_resizingNodeId = -1;
+        ImVec2 m_resizeStartPos;
+        ImVec2 m_resizeStartSize;
         
         // Connection creation
         bool m_creatingConnection = false;
@@ -132,10 +166,13 @@ namespace NodeEditor {
         // Pin position calculation
         ImVec2 calculatePinPosition(const Node* node, const Pin* pin);
         void updatePinPositions();
-        
-        // Validation
+          // Validation
         bool canConnect(int outputPinId, int inputPinId);
         bool wouldCreateCycle(int outputPinId, int inputPinId);
+        
+        // Component management helpers
+        void applyComponentToEntity(EntityID entity, Scene* scene, Node* componentNode);
+        void removeComponentFromEntity(EntityID entity, Scene* scene, NodeType componentType);
     };
 
 } // namespace NodeEditor

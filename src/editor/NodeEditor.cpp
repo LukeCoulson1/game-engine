@@ -13,118 +13,140 @@ namespace NodeEditor {
         : id(nodeId), type(nodeType), name(nodeName), position(pos), size(120, 80) {
         
         // Set up pins based on node type
-        switch (type) {
-            case NodeType::Entity:
-                // Entity nodes have multiple output pins for each component
-                outputPins.push_back({nodeId * 100 + 1, PinType::Output, "Transform", ImVec2()});
-                outputPins.push_back({nodeId * 100 + 2, PinType::Output, "Sprite", ImVec2()});
-                outputPins.push_back({nodeId * 100 + 3, PinType::Output, "Player", ImVec2()});
-                break;
-                
-            case NodeType::SpriteComponent:
-                inputPins.push_back({nodeId * 100 + 1, PinType::Input, "Entity", ImVec2()});
-                componentData = std::make_shared<Sprite>();
-                break;
-                
-            case NodeType::PlayerController:
-                inputPins.push_back({nodeId * 100 + 1, PinType::Input, "Entity", ImVec2()});
-                componentData = std::make_shared<PlayerController>();
-                break;
-                
-            case NodeType::PlayerStats:
-                inputPins.push_back({nodeId * 100 + 1, PinType::Input, "Entity", ImVec2()});
-                componentData = std::make_shared<PlayerStats>();
-                break;
-                
-            case NodeType::PlayerPhysics:
-                inputPins.push_back({nodeId * 100 + 1, PinType::Input, "Entity", ImVec2()});
-                componentData = std::make_shared<PlayerPhysics>();
-                break;
-                
-            case NodeType::PlayerInventory:
-                inputPins.push_back({nodeId * 100 + 1, PinType::Input, "Entity", ImVec2()});
-                componentData = std::make_shared<PlayerInventory>();
-                break;
-                
-            case NodeType::PlayerAbilities:
-                inputPins.push_back({nodeId * 100 + 1, PinType::Input, "Entity", ImVec2()});
-                componentData = std::make_shared<PlayerAbilities>();
-                break;
-                
-            case NodeType::PlayerState:
-                inputPins.push_back({nodeId * 100 + 1, PinType::Input, "Entity", ImVec2()});
-                componentData = std::make_shared<PlayerState>();
-                break;
-                
-            case NodeType::Transform:
-                inputPins.push_back({nodeId * 100 + 1, PinType::Input, "Entity", ImVec2()});
-                componentData = std::make_shared<Transform>();
-                break;
-                
-            case NodeType::Collider:
-                inputPins.push_back({nodeId * 100 + 1, PinType::Input, "Entity", ImVec2()});
-                componentData = std::make_shared<Collider>();
-                break;
-                
-            case NodeType::RigidBody:
-                inputPins.push_back({nodeId * 100 + 1, PinType::Input, "Entity", ImVec2()});
-                componentData = std::make_shared<RigidBody>();
-                break;
+        if (type == NodeType::Entity) {
+            // Entity nodes have multiple output pins for each component
+            outputPins.push_back({nodeId * PIN_ID_MULTIPLIER + TRANSFORM_PIN_OFFSET, PinType::Output, "Transform", ImVec2()});
+            outputPins.push_back({nodeId * PIN_ID_MULTIPLIER + SPRITE_PIN_OFFSET, PinType::Output, "Sprite", ImVec2()});
+            outputPins.push_back({nodeId * PIN_ID_MULTIPLIER + PLAYER_PIN_OFFSET, PinType::Output, "Player", ImVec2()});
+        } else {
+            // All component nodes have the same input pin structure
+            inputPins.push_back({nodeId * PIN_ID_MULTIPLIER + TRANSFORM_PIN_OFFSET, PinType::Input, "Entity", ImVec2()});
+            
+            // Create component data based on type
+            switch (type) {
+                case NodeType::SpriteComponent:
+                    componentData = std::make_shared<Sprite>();
+                    // Set larger constraints for sprite nodes
+                    minSize = ImVec2(200, 120);
+                    maxSize = ImVec2(400, 300);
+                    // Start with larger default size for sprite nodes
+                    size = ImVec2(240, 160);
+                    break;
+                case NodeType::PlayerController:
+                    componentData = std::make_shared<PlayerController>();
+                    break;
+                case NodeType::PlayerStats:
+                    componentData = std::make_shared<PlayerStats>();
+                    break;
+                case NodeType::PlayerPhysics:
+                    componentData = std::make_shared<PlayerPhysics>();
+                    break;
+                case NodeType::PlayerInventory:
+                    componentData = std::make_shared<PlayerInventory>();
+                    break;
+                case NodeType::PlayerAbilities:
+                    componentData = std::make_shared<PlayerAbilities>();
+                    break;
+                case NodeType::PlayerState:
+                    componentData = std::make_shared<PlayerState>();
+                    break;
+                case NodeType::Transform:
+                    componentData = std::make_shared<Transform>();
+                    break;
+                case NodeType::Rotation:
+                    componentData = std::make_shared<Rotation>();
+                    break;
+                case NodeType::Scale:
+                    componentData = std::make_shared<Scale>();
+                    break;
+                case NodeType::Collider:
+                    componentData = std::make_shared<Collider>();
+                    break;
+                case NodeType::RigidBody:
+                    componentData = std::make_shared<RigidBody>();
+                    break;
+                default:
+                    break;
+            }
         }
-    }    void Node::draw(ImVec2 displayPos) {
+    }    void Node::draw(ImVec2 displayPos, float zoom) {
         ImDrawList* drawList = ImGui::GetWindowDrawList();
         
         // Use provided display position, or fallback to stored position
         ImVec2 nodePos = (displayPos.x != 0 || displayPos.y != 0) ? displayPos : position;
+        ImVec2 nodeSize = ImVec2(getNodeSize().x * zoom, getNodeSize().y * zoom);
         ImVec2 nodeRectMin = nodePos;
-        
-        // Sprite nodes are larger to accommodate texture preview
-        ImVec2 nodeSize = size;
-        if (type == NodeType::SpriteComponent) {
-            nodeSize = ImVec2(200, 120);
-        }
         ImVec2 nodeRectMax = ImVec2(nodePos.x + nodeSize.x, nodePos.y + nodeSize.y);
         
         // Node background
         ImU32 nodeColor = selected ? IM_COL32(100, 150, 255, 200) : IM_COL32(60, 60, 60, 200);
-        drawList->AddRectFilled(nodeRectMin, nodeRectMax, nodeColor, 5.0f);
-        drawList->AddRect(nodeRectMin, nodeRectMax, IM_COL32(200, 200, 200, 255), 5.0f, 0, 2.0f);
+        drawList->AddRectFilled(nodeRectMin, nodeRectMax, nodeColor, 5.0f * zoom);
+        drawList->AddRect(nodeRectMin, nodeRectMax, IM_COL32(200, 200, 200, 255), 5.0f * zoom, 0, 2.0f * zoom);
         
-        // Node title
-        ImVec2 titlePos = ImVec2(nodePos.x + 10, nodePos.y + 10);
+        // Node title (scale text size would require font scaling, so we'll keep text readable)
+        ImVec2 titlePos = ImVec2(nodePos.x + 10 * zoom, nodePos.y + 10 * zoom);
         drawList->AddText(titlePos, IM_COL32(255, 255, 255, 255), name.c_str());
         
-        // Special handling for Sprite nodes
+        // Special handling for different node types
         if (type == NodeType::SpriteComponent) {
             drawSpriteNodeContent(nodePos, nodeSize);
+        } else if (type == NodeType::Rotation) {
+            drawRotationNodeContent(nodePos, nodeSize);
+        } else if (type == NodeType::Scale) {
+            drawScaleNodeContent(nodePos, nodeSize);
         }
         
+        // Draw resize handle for selected nodes
+        if (selected) {
+            ImVec2 resizeHandlePos = ImVec2(nodeRectMax.x - 10 * zoom, nodeRectMax.y - 10 * zoom);
+            ImVec2 resizeHandleMax = nodeRectMax;
+            
+            // Resize handle background
+            drawList->AddTriangleFilled(
+                resizeHandlePos,
+                ImVec2(resizeHandleMax.x, resizeHandlePos.y),
+                ImVec2(resizeHandlePos.x, resizeHandleMax.y),
+                IM_COL32(150, 150, 150, 200)
+            );
+            
+            // Resize handle border/grip lines
+            drawList->AddLine(
+                ImVec2(resizeHandlePos.x + 2 * zoom, resizeHandleMax.y - 2 * zoom),
+                ImVec2(resizeHandleMax.x - 2 * zoom, resizeHandlePos.y + 2 * zoom),
+                IM_COL32(100, 100, 100, 255), 1.0f * zoom
+            );
+            drawList->AddLine(
+                ImVec2(resizeHandlePos.x + 5 * zoom, resizeHandleMax.y - 2 * zoom),
+                ImVec2(resizeHandleMax.x - 2 * zoom, resizeHandlePos.y + 5 * zoom),
+                IM_COL32(100, 100, 100, 255), 1.0f * zoom
+            );
+        }
+        
+        // Update pin positions and draw pins
+        updatePinPositions(nodePos, zoom);
+        drawPins(drawList, zoom);
+    }
+    
+    void Node::drawPins(ImDrawList* drawList, float zoom) {
         // Draw input pins
-        float pinY = nodePos.y + 35;
         for (auto& pin : inputPins) {
-            pin.position = ImVec2(nodePos.x - 8, pinY);
             ImU32 pinColor = pin.connected ? IM_COL32(100, 255, 100, 255) : IM_COL32(150, 150, 150, 255);
-            drawList->AddCircleFilled(pin.position, 6.0f, pinColor);
+            drawList->AddCircleFilled(pin.position, 6.0f * zoom, pinColor);
             
             // Pin label
-            ImVec2 labelPos = ImVec2(pin.position.x + 15, pin.position.y - 8);
+            ImVec2 labelPos = ImVec2(pin.position.x + 15 * zoom, pin.position.y - 8 * zoom);
             drawList->AddText(labelPos, IM_COL32(200, 200, 200, 255), pin.name.c_str());
-            
-            pinY += 20;
-        }        
+        }
+        
         // Draw output pins
-        pinY = nodePos.y + 35;
         for (auto& pin : outputPins) {
-            pin.position = ImVec2(nodePos.x + nodeSize.x + 8, pinY);
             ImU32 pinColor = pin.connected ? IM_COL32(100, 255, 100, 255) : IM_COL32(150, 150, 150, 255);
-            drawList->AddCircleFilled(pin.position, 6.0f, pinColor);
+            drawList->AddCircleFilled(pin.position, 6.0f * zoom, pinColor);
             
             // Pin label (right-aligned)
             ImVec2 textSize = ImGui::CalcTextSize(pin.name.c_str());
-            ImVec2 labelPos = ImVec2(pin.position.x - textSize.x - 15, pin.position.y - 8);
+            ImVec2 labelPos = ImVec2(pin.position.x - textSize.x - 15 * zoom, pin.position.y - 8 * zoom);
             drawList->AddText(labelPos, IM_COL32(200, 200, 200, 255), pin.name.c_str());
-            
-            pinY += 20;
         }
     }
 
@@ -231,47 +253,165 @@ namespace NodeEditor {
         }
     }
 
+    void Node::drawRotationNodeContent(ImVec2 nodePos, ImVec2 nodeSize) {
+        // Make sure we have component data
+        if (!componentData) {
+            printf("WARNING: Rotation node has no component data\n");
+            return;
+        }
+        
+        auto rotationComponent = std::static_pointer_cast<Rotation>(componentData);
+        if (!rotationComponent) {
+            printf("WARNING: Failed to cast rotation component data\n");
+            return;
+        }
+        
+        // Validate the node position and size
+        if (nodeSize.x <= 0 || nodeSize.y <= 0) {
+            printf("WARNING: Invalid node size for rotation content: %f, %f\n", nodeSize.x, nodeSize.y);
+            return;
+        }
+        
+        try {
+            // Check if ImGui is initialized and ready for drawing
+            ImGuiIO& io = ImGui::GetIO();
+            if (!io.DisplaySize.x || !io.DisplaySize.y) {
+                printf("WARNING: ImGui not properly initialized for rotation node\n");
+                return;
+            }
+            
+            // Set up ImGui for editing
+            ImGui::SetCursorScreenPos(ImVec2(nodePos.x + 10, nodePos.y + 35));
+            ImGui::PushItemWidth(nodeSize.x - 20);
+            
+            // Angle input
+            float angle = rotationComponent->angle;
+            std::string rotationId = "##rotation" + std::to_string(id);
+            if (ImGui::SliderFloat(rotationId.c_str(), &angle, -180.0f, 180.0f, "%.1f°")) {
+                rotationComponent->angle = angle;
+            }
+            
+            ImGui::PopItemWidth();
+        } catch (const std::exception& e) {
+            printf("ERROR: Exception in drawRotationNodeContent: %s\n", e.what());
+        }
+    }
+
+    void Node::drawScaleNodeContent(ImVec2 nodePos, ImVec2 nodeSize) {
+        // Make sure we have component data
+        if (!componentData) {
+            printf("WARNING: Scale node has no component data\n");
+            return;
+        }
+        
+        auto scaleComponent = std::static_pointer_cast<Scale>(componentData);
+        if (!scaleComponent) {
+            printf("WARNING: Failed to cast scale component data\n");
+            return;
+        }
+        
+        // Validate the node position and size
+        if (nodeSize.x <= 0 || nodeSize.y <= 0) {
+            printf("WARNING: Invalid node size for scale content: %f, %f\n", nodeSize.x, nodeSize.y);
+            return;
+        }
+        
+        try {
+            // Check if ImGui is initialized and ready for drawing
+            ImGuiIO& io = ImGui::GetIO();
+            if (!io.DisplaySize.x || !io.DisplaySize.y) {
+                printf("WARNING: ImGui not properly initialized for scale node\n");
+                return;
+            }
+            
+            // Set up ImGui for editing
+            ImGui::SetCursorScreenPos(ImVec2(nodePos.x + 10, nodePos.y + 35));
+            ImGui::PushItemWidth((nodeSize.x - 30) * 0.5f);
+            
+            // Scale X input
+            float scaleX = scaleComponent->scale.x;
+            std::string scaleXId = "##scaleX" + std::to_string(id);
+            if (ImGui::DragFloat(scaleXId.c_str(), &scaleX, 0.01f, 0.1f, 5.0f, "X: %.2f")) {
+                scaleComponent->scale.x = scaleX;
+            }
+            
+            ImGui::SameLine();
+            
+            // Scale Y input
+            float scaleY = scaleComponent->scale.y;
+            std::string scaleYId = "##scaleY" + std::to_string(id);
+            if (ImGui::DragFloat(scaleYId.c_str(), &scaleY, 0.01f, 0.1f, 5.0f, "Y: %.2f")) {
+                scaleComponent->scale.y = scaleY;
+            }
+            
+            // Uniform scale checkbox and control
+            ImGui::SetCursorScreenPos(ImVec2(nodePos.x + 10, nodePos.y + 60));
+            
+            // Use a per-node uniform scale state instead of static
+            std::string uniformCheckboxId = "Uniform##" + std::to_string(id);
+            bool uniformScale = (scaleComponent->scale.x == scaleComponent->scale.y);
+            
+            if (ImGui::Checkbox(uniformCheckboxId.c_str(), &uniformScale)) {
+                if (uniformScale) {
+                    // Set both to the same value (use X as reference)
+                    scaleComponent->scale.y = scaleComponent->scale.x;
+                }
+            }
+            
+            if (uniformScale) {
+                ImGui::SameLine();
+                ImGui::PushItemWidth(nodeSize.x - 80);
+                float uniform = scaleComponent->scale.x;
+                std::string uniformDragId = "##uniform" + std::to_string(id);
+                if (ImGui::DragFloat(uniformDragId.c_str(), &uniform, 0.01f, 0.1f, 5.0f, "%.2f")) {
+                    scaleComponent->scale.x = uniform;
+                    scaleComponent->scale.y = uniform;
+                }
+                ImGui::PopItemWidth();
+            }
+            
+            ImGui::PopItemWidth();
+        } catch (const std::exception& e) {
+            printf("ERROR: Exception in drawScaleNodeContent: %s\n", e.what());
+        }
+    }
+
+    bool Node::isImageFile(const std::string& extension) {
+        std::string lowerExt = extension;
+        std::transform(lowerExt.begin(), lowerExt.end(), lowerExt.begin(), ::tolower);
+        return lowerExt == ".png" || lowerExt == ".jpg" || lowerExt == ".jpeg" || 
+               lowerExt == ".bmp" || lowerExt == ".tga";
+    }
+
+    void Node::scanDirectoryForImages(const std::string& directory, std::vector<std::string>& imageFiles) {
+        if (!std::filesystem::exists(directory)) return;
+        
+        for (const auto& entry : std::filesystem::directory_iterator(directory)) {
+            if (entry.is_regular_file()) {
+                std::string extension = entry.path().extension().string();
+                if (isImageFile(extension)) {
+                    imageFiles.push_back(directory + "/" + entry.path().filename().string());
+                }
+            }
+        }
+    }
+
     void Node::drawTextureSelectionPopup() {
         ImGui::Text("Select Texture:");
         ImGui::Separator();
         
         // Get asset folder from config
         std::string assetFolder = ConfigManager::getInstance().getAssetFolder();
-        
-        // Collect image files
+          // Collect image files
         std::vector<std::string> imageFiles;
         
         if (std::filesystem::exists(assetFolder)) {
             // Scan main assets folder
-            for (const auto& entry : std::filesystem::directory_iterator(assetFolder)) {
-                if (entry.is_regular_file()) {
-                    std::string filename = entry.path().filename().string();
-                    std::string extension = entry.path().extension().string();
-                    std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
-                    
-                    if (extension == ".png" || extension == ".jpg" || extension == ".jpeg" || 
-                        extension == ".bmp" || extension == ".tga") {
-                        imageFiles.push_back(assetFolder + "/" + filename);
-                    }
-                }
-            }
+            scanDirectoryForImages(assetFolder, imageFiles);
             
             // Also scan tiles subfolder
             std::string tilesFolder = assetFolder + "/tiles";
-            if (std::filesystem::exists(tilesFolder)) {
-                for (const auto& entry : std::filesystem::directory_iterator(tilesFolder)) {
-                    if (entry.is_regular_file()) {
-                        std::string filename = entry.path().filename().string();
-                        std::string extension = entry.path().extension().string();
-                        std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
-                        
-                        if (extension == ".png" || extension == ".jpg" || extension == ".jpeg" || 
-                            extension == ".bmp" || extension == ".tga") {
-                            imageFiles.push_back(tilesFolder + "/" + filename);
-                        }
-                    }
-                }
-            }
+            scanDirectoryForImages(tilesFolder, imageFiles);
         }
         
         if (!imageFiles.empty()) {
@@ -315,10 +455,7 @@ namespace NodeEditor {
             ImGui::CloseCurrentPopup();
         }
     }    bool Node::isInside(ImVec2 point) const {
-        ImVec2 nodeSize = size;
-        if (type == NodeType::SpriteComponent) {
-            nodeSize = ImVec2(200, 120);
-        }
+        ImVec2 nodeSize = getNodeSize();
         return point.x >= position.x && point.x <= position.x + nodeSize.x &&
                point.y >= position.y && point.y <= position.y + nodeSize.y;
     }
@@ -330,7 +467,42 @@ namespace NodeEditor {
         for (auto& pin : outputPins) {
             if (pin.id == pinId) return &pin;
         }
-        return nullptr;
+        return nullptr;    }
+
+    ImVec2 Node::getNodeSize() const {
+        // Always return the actual size - constraints are handled in setSize()
+        return size;
+    }
+
+    void Node::updatePinPositions(ImVec2 nodePos, float zoom) {
+        ImVec2 nodeSize = ImVec2(getNodeSize().x * zoom, getNodeSize().y * zoom);
+        
+        float pinY = nodePos.y + 35 * zoom;
+        for (auto& pin : inputPins) {
+            pin.position = ImVec2(nodePos.x - 8 * zoom, pinY);
+            pinY += 20 * zoom;
+        }
+        
+        pinY = nodePos.y + 35 * zoom;
+        for (auto& pin : outputPins) {
+            pin.position = ImVec2(nodePos.x + nodeSize.x + 8 * zoom, pinY);
+            pinY += 20 * zoom;
+        }
+    }
+
+    bool Node::isOnResizeHandle(ImVec2 point) const {
+        ImVec2 nodeSize = getNodeSize();
+        ImVec2 resizeHandlePos = ImVec2(position.x + nodeSize.x - 10, position.y + nodeSize.y - 10);
+        ImVec2 resizeHandleSize = ImVec2(10, 10);
+        
+        return point.x >= resizeHandlePos.x && point.x <= resizeHandlePos.x + resizeHandleSize.x &&
+               point.y >= resizeHandlePos.y && point.y <= resizeHandlePos.y + resizeHandleSize.y;
+    }
+
+    void Node::setSize(ImVec2 newSize) {
+        // Clamp to min/max size constraints
+        size.x = std::max(minSize.x, std::min(maxSize.x, newSize.x));
+        size.y = std::max(minSize.y, std::min(maxSize.y, newSize.y));
     }
 
     NodeEditorWindow::NodeEditorWindow() {
@@ -379,6 +551,34 @@ namespace NodeEditor {
         ImGui::InvisibleButton("canvas", m_canvasSize, ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
         
         handleInput();
+        
+        // Set appropriate cursor based on current state
+        if (m_resizing) {
+            ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNWSE);
+        } else {
+            // Check if hovering over a resize handle
+            ImGuiIO& io = ImGui::GetIO();
+            ImVec2 mousePos = io.MousePos;
+            bool hoveringResizeHandle = false;
+            
+            if (ImGui::IsItemHovered()) {
+                for (auto& node : m_nodes) {
+                    if (node->selected) {
+                        ImVec2 relativePos = ImVec2((mousePos.x - m_canvasPos.x - m_scrolling.x) / m_zoom, 
+                                                   (mousePos.y - m_canvasPos.y - m_scrolling.y) / m_zoom);
+                        if (node->isOnResizeHandle(relativePos)) {
+                            hoveringResizeHandle = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            if (hoveringResizeHandle) {
+                ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNWSE);
+            }
+        }
+        
         drawGrid();
         drawNodes();
         drawConnections();
@@ -395,7 +595,7 @@ namespace NodeEditor {
         drawList->PushClipRect(canvasMin, canvasMax, true);
         
         // Grid
-        const float gridStep = 50.0f;
+        const float gridStep = 50.0f * m_zoom;
         const ImU32 gridColor = IM_COL32(100, 100, 100, 40);
         
         for (float x = fmod(m_scrolling.x, gridStep); x < m_canvasSize.x; x += gridStep) {
@@ -417,11 +617,11 @@ namespace NodeEditor {
             ImGui::PushID(node->id);
             
             // Calculate display position for this node
-            ImVec2 displayPos = ImVec2(m_canvasPos.x + node->position.x + m_scrolling.x, 
-                                      m_canvasPos.y + node->position.y + m_scrolling.y);
+            ImVec2 displayPos = ImVec2(m_canvasPos.x + (node->position.x * m_zoom) + m_scrolling.x, 
+                                      m_canvasPos.y + (node->position.y * m_zoom) + m_scrolling.y);
             
             // Draw the node at the display position without modifying the node's actual position
-            node->draw(displayPos);
+            node->draw(displayPos, m_zoom);
             
             ImGui::PopID();
         }
@@ -455,10 +655,10 @@ namespace NodeEditor {
                 ImVec2 p2 = inputPin->position;
                 
                 // Bezier curve for the connection
-                ImVec2 cp1 = ImVec2(p1.x + 50, p1.y);
-                ImVec2 cp2 = ImVec2(p2.x - 50, p2.y);
+                ImVec2 cp1 = ImVec2(p1.x + 50 * m_zoom, p1.y);
+                ImVec2 cp2 = ImVec2(p2.x - 50 * m_zoom, p2.y);
                 
-                drawList->AddBezierCubic(p1, cp1, cp2, p2, IM_COL32(200, 200, 100, 255), 3.0f);
+                drawList->AddBezierCubic(p1, cp1, cp2, p2, IM_COL32(200, 200, 100, 255), 3.0f * m_zoom);
             }
         }
     }
@@ -480,10 +680,10 @@ namespace NodeEditor {
                 ImVec2 p1 = startPin->position;
                 ImVec2 p2 = m_connectionEndPos;
                 
-                ImVec2 cp1 = ImVec2(p1.x + 50, p1.y);
-                ImVec2 cp2 = ImVec2(p2.x - 50, p2.y);
+                ImVec2 cp1 = ImVec2(p1.x + 50 * m_zoom, p1.y);
+                ImVec2 cp2 = ImVec2(p2.x - 50 * m_zoom, p2.y);
                 
-                drawList->AddBezierCubic(p1, cp1, cp2, p2, IM_COL32(255, 255, 100, 200), 2.0f);
+                drawList->AddBezierCubic(p1, cp1, cp2, p2, IM_COL32(255, 255, 100, 200), 2.0f * m_zoom);
             }
         }
     }    void NodeEditorWindow::handleInput() {
@@ -493,12 +693,35 @@ namespace NodeEditor {
         bool clickedOnConnection = false;
         
         if (ImGui::IsItemHovered()) {
+            // Handle zoom with mouse wheel
+            if (io.MouseWheel != 0.0f) {
+                float zoomFactor = 0.1f;
+                float oldZoom = m_zoom;
+                
+                // Update zoom
+                m_zoom += io.MouseWheel * zoomFactor;
+                m_zoom = std::max(m_minZoom, std::min(m_maxZoom, m_zoom));
+                
+                // Only adjust scrolling if zoom actually changed
+                if (m_zoom != oldZoom) {
+                    // Get mouse position relative to canvas
+                    ImVec2 mouseCanvasPos = ImVec2(mousePos.x - m_canvasPos.x, mousePos.y - m_canvasPos.y);
+                    
+                    // Calculate the zoom change ratio
+                    float zoomRatio = m_zoom / oldZoom;
+                    
+                    // Adjust scrolling to keep the point under the mouse cursor stationary
+                    m_scrolling.x = mouseCanvasPos.x - (mouseCanvasPos.x - m_scrolling.x) * zoomRatio;
+                    m_scrolling.y = mouseCanvasPos.y - (mouseCanvasPos.y - m_scrolling.y) * zoomRatio;
+                }
+            }
+            
             // Check for pin clicks first
             for (auto& node : m_nodes) {
                 // Check input pins
                 for (auto& pin : node->inputPins) {
                     float distance = sqrt(pow(mousePos.x - pin.position.x, 2) + pow(mousePos.y - pin.position.y, 2));
-                    if (distance <= 10.0f) {
+                    if (distance <= 10.0f * m_zoom) {
                         if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
                             if (m_creatingConnection && canConnect(m_connectionStartPinId, pin.id)) {
                                 // Complete connection
@@ -515,7 +738,7 @@ namespace NodeEditor {
                 // Check output pins
                 for (auto& pin : node->outputPins) {
                     float distance = sqrt(pow(mousePos.x - pin.position.x, 2) + pow(mousePos.y - pin.position.y, 2));
-                    if (distance <= 10.0f) {
+                    if (distance <= 10.0f * m_zoom) {
                         if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
                             // Start connection
                             m_creatingConnection = true;
@@ -595,19 +818,33 @@ namespace NodeEditor {
                 }
             }
             
-            // Handle node dragging
+            // Handle node dragging and resizing
             if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !clickedOnPin) {
-                // Check if clicking on a node
+                // Check if clicking on a node or resize handle
                 bool clickedOnNode = false;
+                bool clickedOnResizeHandle = false;
+                
                 for (auto& node : m_nodes) {
-                    ImVec2 relativePos = ImVec2(mousePos.x - m_canvasPos.x - m_scrolling.x, 
-                                               mousePos.y - m_canvasPos.y - m_scrolling.y);
+                    ImVec2 relativePos = ImVec2((mousePos.x - m_canvasPos.x - m_scrolling.x) / m_zoom, 
+                                               (mousePos.y - m_canvasPos.y - m_scrolling.y) / m_zoom);
+                    
                     if (node->isInside(relativePos)) {
-                        selectNode(node->id);
-                        m_dragging = true;
-                        m_draggedNodeId = node->id;
-                        m_dragOffset = ImVec2(relativePos.x - node->position.x, relativePos.y - node->position.y);
                         clickedOnNode = true;
+                        
+                        // Check if clicking on resize handle for already selected nodes
+                        if (node->selected && node->isOnResizeHandle(relativePos)) {
+                            m_resizing = true;
+                            m_resizingNodeId = node->id;
+                            m_resizeStartPos = relativePos;
+                            m_resizeStartSize = node->getNodeSize();
+                            clickedOnResizeHandle = true;
+                        } else {
+                            // Select the node and set up for dragging
+                            selectNode(node->id);
+                            m_dragging = true;
+                            m_draggedNodeId = node->id;
+                            m_dragOffset = ImVec2(relativePos.x - node->position.x, relativePos.y - node->position.y);
+                        }
                         break;
                     }
                 }
@@ -617,9 +854,9 @@ namespace NodeEditor {
                 }
             }
             
-            // Canvas dragging (middle mouse or left mouse when not on node)
+            // Canvas dragging (middle mouse or left mouse when not on node and not resizing)
             if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle) || 
-                (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && !m_dragging && !m_creatingConnection)) {
+                (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && !m_dragging && !m_creatingConnection && !m_resizing)) {
                 m_scrolling.x += io.MouseDelta.x;
                 m_scrolling.y += io.MouseDelta.y;
             }
@@ -629,9 +866,27 @@ namespace NodeEditor {
         if (m_dragging && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
             for (auto& node : m_nodes) {
                 if (node->id == m_draggedNodeId) {
-                    ImVec2 relativePos = ImVec2(mousePos.x - m_canvasPos.x - m_scrolling.x, 
-                                               mousePos.y - m_canvasPos.y - m_scrolling.y);
+                    ImVec2 relativePos = ImVec2((mousePos.x - m_canvasPos.x - m_scrolling.x) / m_zoom, 
+                                               (mousePos.y - m_canvasPos.y - m_scrolling.y) / m_zoom);
                     node->position = ImVec2(relativePos.x - m_dragOffset.x, relativePos.y - m_dragOffset.y);
+                    break;
+                }
+            }
+        }
+        
+        // Handle node resizing
+        if (m_resizing && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+            for (auto& node : m_nodes) {
+                if (node->id == m_resizingNodeId) {
+                    ImVec2 relativePos = ImVec2((mousePos.x - m_canvasPos.x - m_scrolling.x) / m_zoom, 
+                                               (mousePos.y - m_canvasPos.y - m_scrolling.y) / m_zoom);
+                    
+                    // Calculate new size based on mouse movement
+                    ImVec2 sizeDelta = ImVec2(relativePos.x - m_resizeStartPos.x, relativePos.y - m_resizeStartPos.y);
+                    ImVec2 newSize = ImVec2(m_resizeStartSize.x + sizeDelta.x, m_resizeStartSize.y + sizeDelta.y);
+                    
+                    // Apply the new size with constraints
+                    node->setSize(newSize);
                     break;
                 }
             }
@@ -640,6 +895,8 @@ namespace NodeEditor {
         if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
             m_dragging = false;
             m_draggedNodeId = -1;
+            m_resizing = false;
+            m_resizingNodeId = -1;
         }        
         // Create node popup
         if (ImGui::BeginPopup("CreateNode")) {
@@ -691,62 +948,9 @@ namespace NodeEditor {
             if (outputNode->associatedEntity != 0) {
                 EntityID entity = outputNode->associatedEntity;
                 Scene* scene = m_activeScene->getScene().get();
-                
-                if (scene) {                    // Apply the component based on the input node type
-                    switch (inputNode->type) {
-                        case NodeType::SpriteComponent:
-                            // Always apply/update the sprite component with the node's data (including texture)
-                            if (scene->hasComponent<Sprite>(entity)) {
-                                scene->removeComponent<Sprite>(entity);
-                            }
-                            scene->addComponent<Sprite>(entity, *std::static_pointer_cast<Sprite>(inputNode->componentData));
-                            break;
-                        case NodeType::PlayerController:
-                            if (!scene->hasComponent<PlayerController>(entity)) {
-                                scene->addComponent<PlayerController>(entity, *std::static_pointer_cast<PlayerController>(inputNode->componentData));
-                            }
-                            break;
-                        case NodeType::PlayerStats:
-                            if (!scene->hasComponent<PlayerStats>(entity)) {
-                                scene->addComponent<PlayerStats>(entity, *std::static_pointer_cast<PlayerStats>(inputNode->componentData));
-                            }
-                            break;
-                        case NodeType::PlayerPhysics:
-                            if (!scene->hasComponent<PlayerPhysics>(entity)) {
-                                scene->addComponent<PlayerPhysics>(entity, *std::static_pointer_cast<PlayerPhysics>(inputNode->componentData));
-                            }
-                            break;
-                        case NodeType::PlayerInventory:
-                            if (!scene->hasComponent<PlayerInventory>(entity)) {
-                                scene->addComponent<PlayerInventory>(entity, *std::static_pointer_cast<PlayerInventory>(inputNode->componentData));
-                            }
-                            break;
-                        case NodeType::PlayerAbilities:
-                            if (!scene->hasComponent<PlayerAbilities>(entity)) {
-                                scene->addComponent<PlayerAbilities>(entity, *std::static_pointer_cast<PlayerAbilities>(inputNode->componentData));
-                            }
-                            break;
-                        case NodeType::PlayerState:
-                            if (!scene->hasComponent<PlayerState>(entity)) {
-                                scene->addComponent<PlayerState>(entity, *std::static_pointer_cast<PlayerState>(inputNode->componentData));
-                            }
-                            break;
-                        case NodeType::Transform:
-                            if (!scene->hasComponent<Transform>(entity)) {
-                                scene->addComponent<Transform>(entity, *std::static_pointer_cast<Transform>(inputNode->componentData));
-                            }
-                            break;
-                        case NodeType::Collider:
-                            if (!scene->hasComponent<Collider>(entity)) {
-                                scene->addComponent<Collider>(entity, *std::static_pointer_cast<Collider>(inputNode->componentData));
-                            }
-                            break;
-                        case NodeType::RigidBody:
-                            if (!scene->hasComponent<RigidBody>(entity)) {
-                                scene->addComponent<RigidBody>(entity, *std::static_pointer_cast<RigidBody>(inputNode->componentData));
-                            }
-                            break;
-                    }
+                  if (scene) {
+                    // Apply the component using the helper method
+                    applyComponentToEntity(entity, scene, inputNode);
                 }
             }
         }
@@ -785,61 +989,9 @@ namespace NodeEditor {
                 
                 EntityID entity = outputNode->associatedEntity;
                 Scene* scene = m_activeScene->getScene().get();
-                
-                if (scene) {
-                    // Remove the component based on the input node type
-                    switch (inputNode->type) {
-                        case NodeType::SpriteComponent:
-                            if (scene->hasComponent<Sprite>(entity)) {
-                                scene->removeComponent<Sprite>(entity);
-                            }
-                            break;
-                        case NodeType::PlayerController:
-                            if (scene->hasComponent<PlayerController>(entity)) {
-                                scene->removeComponent<PlayerController>(entity);
-                            }
-                            break;
-                        case NodeType::PlayerStats:
-                            if (scene->hasComponent<PlayerStats>(entity)) {
-                                scene->removeComponent<PlayerStats>(entity);
-                            }
-                            break;
-                        case NodeType::PlayerPhysics:
-                            if (scene->hasComponent<PlayerPhysics>(entity)) {
-                                scene->removeComponent<PlayerPhysics>(entity);
-                            }
-                            break;
-                        case NodeType::PlayerInventory:
-                            if (scene->hasComponent<PlayerInventory>(entity)) {
-                                scene->removeComponent<PlayerInventory>(entity);
-                            }
-                            break;
-                        case NodeType::PlayerAbilities:
-                            if (scene->hasComponent<PlayerAbilities>(entity)) {
-                                scene->removeComponent<PlayerAbilities>(entity);
-                            }
-                            break;
-                        case NodeType::PlayerState:
-                            if (scene->hasComponent<PlayerState>(entity)) {
-                                scene->removeComponent<PlayerState>(entity);
-                            }
-                            break;
-                        case NodeType::Transform:
-                            if (scene->hasComponent<Transform>(entity)) {
-                                scene->removeComponent<Transform>(entity);
-                            }
-                            break;
-                        case NodeType::Collider:
-                            if (scene->hasComponent<Collider>(entity)) {
-                                scene->removeComponent<Collider>(entity);
-                            }
-                            break;
-                        case NodeType::RigidBody:
-                            if (scene->hasComponent<RigidBody>(entity)) {
-                                scene->removeComponent<RigidBody>(entity);
-                            }
-                            break;
-                    }
+                  if (scene) {
+                    // Remove the component using the helper method
+                    removeComponentFromEntity(entity, scene, inputNode->type);
                 }
             }
             
@@ -862,8 +1014,8 @@ namespace NodeEditor {
 
     void NodeEditorWindow::drawNodeCreationMenu() {
         ImVec2 mousePos = ImGui::GetIO().MousePos;
-        ImVec2 nodePos = ImVec2(mousePos.x - m_canvasPos.x - m_scrolling.x, 
-                               mousePos.y - m_canvasPos.y - m_scrolling.y);
+        ImVec2 nodePos = ImVec2((mousePos.x - m_canvasPos.x - m_scrolling.x) / m_zoom, 
+                               (mousePos.y - m_canvasPos.y - m_scrolling.y) / m_zoom);
         
         if (ImGui::MenuItem("Entity Node")) {
             createNode(NodeType::Entity, nodePos);
@@ -879,6 +1031,16 @@ namespace NodeEditor {
         
         if (ImGui::MenuItem("Transform")) {
             createNode(NodeType::Transform, nodePos);
+            ImGui::CloseCurrentPopup();
+        }
+        
+        if (ImGui::MenuItem("Rotation")) {
+            createNode(NodeType::Rotation, nodePos);
+            ImGui::CloseCurrentPopup();
+        }
+        
+        if (ImGui::MenuItem("Scale")) {
+            createNode(NodeType::Scale, nodePos);
             ImGui::CloseCurrentPopup();
         }
         
@@ -958,28 +1120,160 @@ namespace NodeEditor {
         }
     }    void NodeEditorWindow::updatePinPositions() {
         // Update pin positions for all nodes using display coordinates
-        for (auto& node : m_nodes) {
-            // Calculate display position
+        for (auto& node : m_nodes) {            // Calculate display position
             ImVec2 displayPos = ImVec2(m_canvasPos.x + node->position.x + m_scrolling.x, 
                                       m_canvasPos.y + node->position.y + m_scrolling.y);
             
-            // Get node size (sprite nodes are larger)
-            ImVec2 nodeSize = node->size;
-            if (node->type == NodeType::SpriteComponent) {
-                nodeSize = ImVec2(200, 120);
-            }
-            
-            float pinY = displayPos.y + 35;
-            for (auto& pin : node->inputPins) {
-                pin.position = ImVec2(displayPos.x - 8, pinY);
-                pinY += 20;
-            }
-            
-            pinY = displayPos.y + 35;
-            for (auto& pin : node->outputPins) {
-                pin.position = ImVec2(displayPos.x + nodeSize.x + 8, pinY);
-                pinY += 20;
-            }
+            // Update pin positions using the node's helper method
+            node->updatePinPositions(displayPos);
+        }
+    }
+
+    void NodeEditorWindow::applyComponentToEntity(EntityID entity, Scene* scene, Node* componentNode) {
+        if (!scene || !componentNode || !componentNode->componentData) return;
+        
+        switch (componentNode->type) {
+            case NodeType::SpriteComponent:
+                // Always apply/update the sprite component with the node's data (including texture)
+                if (scene->hasComponent<Sprite>(entity)) {
+                    scene->removeComponent<Sprite>(entity);
+                }
+                scene->addComponent<Sprite>(entity, *std::static_pointer_cast<Sprite>(componentNode->componentData));
+                break;
+            case NodeType::PlayerController:
+                if (!scene->hasComponent<PlayerController>(entity)) {
+                    scene->addComponent<PlayerController>(entity, *std::static_pointer_cast<PlayerController>(componentNode->componentData));
+                }
+                break;
+            case NodeType::PlayerStats:
+                if (!scene->hasComponent<PlayerStats>(entity)) {
+                    scene->addComponent<PlayerStats>(entity, *std::static_pointer_cast<PlayerStats>(componentNode->componentData));
+                }
+                break;
+            case NodeType::PlayerPhysics:
+                if (!scene->hasComponent<PlayerPhysics>(entity)) {
+                    scene->addComponent<PlayerPhysics>(entity, *std::static_pointer_cast<PlayerPhysics>(componentNode->componentData));
+                }
+                break;
+            case NodeType::PlayerInventory:
+                if (!scene->hasComponent<PlayerInventory>(entity)) {
+                    scene->addComponent<PlayerInventory>(entity, *std::static_pointer_cast<PlayerInventory>(componentNode->componentData));
+                }
+                break;
+            case NodeType::PlayerAbilities:
+                if (!scene->hasComponent<PlayerAbilities>(entity)) {
+                    scene->addComponent<PlayerAbilities>(entity, *std::static_pointer_cast<PlayerAbilities>(componentNode->componentData));
+                }
+                break;
+            case NodeType::PlayerState:
+                if (!scene->hasComponent<PlayerState>(entity)) {
+                    scene->addComponent<PlayerState>(entity, *std::static_pointer_cast<PlayerState>(componentNode->componentData));
+                }
+                break;
+            case NodeType::Transform:
+                if (!scene->hasComponent<Transform>(entity)) {
+                    scene->addComponent<Transform>(entity, *std::static_pointer_cast<Transform>(componentNode->componentData));
+                }
+                break;
+            case NodeType::Rotation:
+                if (!scene->hasComponent<Rotation>(entity)) {
+                    scene->addComponent<Rotation>(entity, *std::static_pointer_cast<Rotation>(componentNode->componentData));
+                } else {
+                    // Update existing rotation component
+                    auto& rotComp = scene->getComponent<Rotation>(entity);
+                    rotComp = *std::static_pointer_cast<Rotation>(componentNode->componentData);
+                }
+                break;
+            case NodeType::Scale:
+                if (!scene->hasComponent<Scale>(entity)) {
+                    scene->addComponent<Scale>(entity, *std::static_pointer_cast<Scale>(componentNode->componentData));
+                } else {
+                    // Update existing scale component
+                    auto& scaleComp = scene->getComponent<Scale>(entity);
+                    scaleComp = *std::static_pointer_cast<Scale>(componentNode->componentData);
+                }
+                break;
+            case NodeType::Collider:
+                if (!scene->hasComponent<Collider>(entity)) {
+                    scene->addComponent<Collider>(entity, *std::static_pointer_cast<Collider>(componentNode->componentData));
+                }
+                break;
+            case NodeType::RigidBody:
+                if (!scene->hasComponent<RigidBody>(entity)) {
+                    scene->addComponent<RigidBody>(entity, *std::static_pointer_cast<RigidBody>(componentNode->componentData));
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
+    void NodeEditorWindow::removeComponentFromEntity(EntityID entity, Scene* scene, NodeType componentType) {
+        if (!scene) return;
+        
+        switch (componentType) {
+            case NodeType::SpriteComponent:
+                if (scene->hasComponent<Sprite>(entity)) {
+                    scene->removeComponent<Sprite>(entity);
+                }
+                break;
+            case NodeType::PlayerController:
+                if (scene->hasComponent<PlayerController>(entity)) {
+                    scene->removeComponent<PlayerController>(entity);
+                }
+                break;
+            case NodeType::PlayerStats:
+                if (scene->hasComponent<PlayerStats>(entity)) {
+                    scene->removeComponent<PlayerStats>(entity);
+                }
+                break;
+            case NodeType::PlayerPhysics:
+                if (scene->hasComponent<PlayerPhysics>(entity)) {
+                    scene->removeComponent<PlayerPhysics>(entity);
+                }
+                break;
+            case NodeType::PlayerInventory:
+                if (scene->hasComponent<PlayerInventory>(entity)) {
+                    scene->removeComponent<PlayerInventory>(entity);
+                }
+                break;
+            case NodeType::PlayerAbilities:
+                if (scene->hasComponent<PlayerAbilities>(entity)) {
+                    scene->removeComponent<PlayerAbilities>(entity);
+                }
+                break;
+            case NodeType::PlayerState:
+                if (scene->hasComponent<PlayerState>(entity)) {
+                    scene->removeComponent<PlayerState>(entity);
+                }
+                break;
+            case NodeType::Transform:
+                if (scene->hasComponent<Transform>(entity)) {
+                    scene->removeComponent<Transform>(entity);
+                }
+                break;
+            case NodeType::Rotation:
+                if (scene->hasComponent<Rotation>(entity)) {
+                    scene->removeComponent<Rotation>(entity);
+                }
+                break;
+            case NodeType::Scale:
+                if (scene->hasComponent<Scale>(entity)) {
+                    scene->removeComponent<Scale>(entity);
+                }
+                break;
+            case NodeType::Collider:
+                if (scene->hasComponent<Collider>(entity)) {
+                    scene->removeComponent<Collider>(entity);
+                }
+                break;
+            case NodeType::RigidBody:
+                if (scene->hasComponent<RigidBody>(entity)) {
+                    scene->removeComponent<RigidBody>(entity);
+                }
+                break;
+            default:
+                break;
         }
     }
 
@@ -994,6 +1288,8 @@ namespace NodeEditor {
             case NodeType::PlayerAbilities: return "Abilities";
             case NodeType::PlayerState: return "State";
             case NodeType::Transform: return "Transform";
+            case NodeType::Rotation: return "Rotation";
+            case NodeType::Scale: return "Scale";
             case NodeType::Collider: return "Collider";
             case NodeType::RigidBody: return "RigidBody";
             default: return "Unknown";
@@ -1030,61 +1326,9 @@ namespace NodeEditor {
                     }
                 }
             }
-            
-            if (isConnected && node->componentData) {
-                // Apply the component to the entity based on type
-                switch (node->type) {
-                    case NodeType::SpriteComponent:
-                        if (!scene->hasComponent<Sprite>(entity)) {
-                            scene->addComponent<Sprite>(entity, *std::static_pointer_cast<Sprite>(node->componentData));
-                        }
-                        break;
-                    case NodeType::PlayerController:
-                        if (!scene->hasComponent<PlayerController>(entity)) {
-                            scene->addComponent<PlayerController>(entity, *std::static_pointer_cast<PlayerController>(node->componentData));
-                        }
-                        break;
-                    case NodeType::PlayerStats:
-                        if (!scene->hasComponent<PlayerStats>(entity)) {
-                            scene->addComponent<PlayerStats>(entity, *std::static_pointer_cast<PlayerStats>(node->componentData));
-                        }
-                        break;
-                    case NodeType::PlayerPhysics:
-                        if (!scene->hasComponent<PlayerPhysics>(entity)) {
-                            scene->addComponent<PlayerPhysics>(entity, *std::static_pointer_cast<PlayerPhysics>(node->componentData));
-                        }
-                        break;
-                    case NodeType::PlayerInventory:
-                        if (!scene->hasComponent<PlayerInventory>(entity)) {
-                            scene->addComponent<PlayerInventory>(entity, *std::static_pointer_cast<PlayerInventory>(node->componentData));
-                        }
-                        break;
-                    case NodeType::PlayerAbilities:
-                        if (!scene->hasComponent<PlayerAbilities>(entity)) {
-                            scene->addComponent<PlayerAbilities>(entity, *std::static_pointer_cast<PlayerAbilities>(node->componentData));
-                        }
-                        break;
-                    case NodeType::PlayerState:
-                        if (!scene->hasComponent<PlayerState>(entity)) {
-                            scene->addComponent<PlayerState>(entity, *std::static_pointer_cast<PlayerState>(node->componentData));
-                        }
-                        break;
-                    case NodeType::Transform:
-                        if (!scene->hasComponent<Transform>(entity)) {
-                            scene->addComponent<Transform>(entity, *std::static_pointer_cast<Transform>(node->componentData));
-                        }
-                        break;
-                    case NodeType::Collider:
-                        if (!scene->hasComponent<Collider>(entity)) {
-                            scene->addComponent<Collider>(entity, *std::static_pointer_cast<Collider>(node->componentData));
-                        }
-                        break;
-                    case NodeType::RigidBody:
-                        if (!scene->hasComponent<RigidBody>(entity)) {
-                            scene->addComponent<RigidBody>(entity, *std::static_pointer_cast<RigidBody>(node->componentData));
-                        }
-                        break;
-                }
+              if (isConnected && node->componentData) {
+                // Apply the component using the helper method
+                applyComponentToEntity(entity, scene, node.get());
             }
         }
     }
@@ -1092,17 +1336,38 @@ namespace NodeEditor {
     void NodeEditorWindow::loadEntityAsNodes(EntityID entity, Scene* scene) {
         if (!scene) return;
         
-        // Clear existing nodes
-        m_nodes.clear();
-        m_connections.clear();
-        m_nodeMap.clear();
+        printf("DEBUG: Starting loadEntityAsNodes for entity %d\n", entity);
         
-        // Create entity node
-        int entityNodeId = createNode(NodeType::Entity, ImVec2(100, 100));
-        m_nodeMap[entityNodeId]->associatedEntity = entity;
-        
-        // Create component nodes based on what the entity has
-        std::vector<int> componentNodeIds;
+        try {
+            // Clear existing nodes
+            m_nodes.clear();
+            m_connections.clear();
+            m_nodeMap.clear();
+            
+            printf("DEBUG: Cleared existing nodes\n");
+            
+            // Create entity node
+            int entityNodeId = createNode(NodeType::Entity, ImVec2(100, 100));
+            printf("DEBUG: Created entity node with ID %d\n", entityNodeId);
+            
+            Node* entityNode = m_nodeMap[entityNodeId];
+            if (!entityNode) {
+                printf("ERROR: Failed to find entity node in node map\n");
+                return;
+            }
+            
+            entityNode->associatedEntity = entity;
+            printf("DEBUG: Associated entity %d with node\n", entity);
+            
+            // Update the entity node name to reflect the correct entity
+            if (scene) {
+                std::string entityName = scene->getEntityName(entity);
+                entityNode->name = "Entity: " + entityName;
+                printf("DEBUG: Set entity node name to '%s'\n", entityNode->name.c_str());
+            }
+            
+            // Create component nodes based on what the entity has
+            std::vector<int> componentNodeIds;
           if (scene->hasComponent<Sprite>(entity)) {
             int nodeId = createNode(NodeType::SpriteComponent, ImVec2(300, 50));
             // Copy the actual sprite component data from the entity
@@ -1131,7 +1396,49 @@ namespace NodeEditor {
         
         if (scene->hasComponent<Transform>(entity)) {
             int nodeId = createNode(NodeType::Transform, ImVec2(300, 330));
+            // Copy the actual transform component data from the entity
+            auto& entityTransform = scene->getComponent<Transform>(entity);
+            auto nodeTransform = std::static_pointer_cast<Transform>(m_nodeMap[nodeId]->componentData);
+            if (nodeTransform) {
+                *nodeTransform = entityTransform;
+            }
             componentNodeIds.push_back(nodeId);
+        }
+        
+        if (scene->hasComponent<Rotation>(entity)) {
+            try {
+                int nodeId = createNode(NodeType::Rotation, ImVec2(500, 100));
+                
+                // Verify the node was created correctly and copy component data
+                if (m_nodeMap.find(nodeId) != m_nodeMap.end() && m_nodeMap[nodeId] && m_nodeMap[nodeId]->componentData) {
+                    auto& entityRotation = scene->getComponent<Rotation>(entity);
+                    auto nodeRotation = std::static_pointer_cast<Rotation>(m_nodeMap[nodeId]->componentData);
+                    if (nodeRotation) {
+                        *nodeRotation = entityRotation;
+                    }
+                }
+                componentNodeIds.push_back(nodeId);
+            } catch (const std::exception& e) {
+                printf("ERROR: Exception while creating Rotation node: %s\n", e.what());
+            }
+        }
+        
+        if (scene->hasComponent<Scale>(entity)) {
+            try {
+                int nodeId = createNode(NodeType::Scale, ImVec2(500, 200));
+                
+                // Verify the node was created correctly and copy component data
+                if (m_nodeMap.find(nodeId) != m_nodeMap.end() && m_nodeMap[nodeId] && m_nodeMap[nodeId]->componentData) {
+                    auto& entityScale = scene->getComponent<Scale>(entity);
+                    auto nodeScale = std::static_pointer_cast<Scale>(m_nodeMap[nodeId]->componentData);
+                    if (nodeScale) {
+                        *nodeScale = entityScale;
+                    }
+                }
+                componentNodeIds.push_back(nodeId);
+            } catch (const std::exception& e) {
+                printf("ERROR: Exception while creating Scale node: %s\n", e.what());
+            }
         }
         
         if (scene->hasComponent<Collider>(entity)) {
@@ -1139,10 +1446,19 @@ namespace NodeEditor {
             componentNodeIds.push_back(nodeId);
         }
           // Create connections with proper pin matching
-        Node* entityNode = m_nodeMap[entityNodeId];
+        printf("DEBUG: Starting connection creation, %zu component nodes\n", componentNodeIds.size());
         for (int componentNodeId : componentNodeIds) {
+            printf("DEBUG: Processing component node %d\n", componentNodeId);
             Node* componentNode = m_nodeMap[componentNodeId];
+            if (!componentNode) {
+                printf("ERROR: Component node %d not found in map\n", componentNodeId);
+                continue;
+            }
+            
             if (!entityNode->outputPins.empty() && !componentNode->inputPins.empty()) {
+                printf("DEBUG: Entity has %zu output pins, component has %zu input pins\n", 
+                       entityNode->outputPins.size(), componentNode->inputPins.size());
+                
                 // Find the correct output pin based on component type
                 int outputPinId = -1;
                 int entityNodeIdForPin = entityNode->id;
@@ -1150,6 +1466,7 @@ namespace NodeEditor {
                 switch (componentNode->type) {
                     case NodeType::SpriteComponent:
                         outputPinId = entityNodeIdForPin * 100 + 2; // Sprite pin
+                        printf("DEBUG: Using Sprite pin %d\n", outputPinId);
                         break;
                     case NodeType::PlayerController:
                     case NodeType::PlayerStats:
@@ -1158,31 +1475,51 @@ namespace NodeEditor {
                     case NodeType::PlayerAbilities:
                     case NodeType::PlayerState:
                         outputPinId = entityNodeIdForPin * 100 + 3; // Player pin
+                        printf("DEBUG: Using Player pin %d\n", outputPinId);
                         break;
                     case NodeType::Transform:
+                    case NodeType::Rotation:
+                    case NodeType::Scale:
                     case NodeType::Collider:
                     case NodeType::RigidBody:
                         outputPinId = entityNodeIdForPin * 100 + 1; // Transform pin
+                        printf("DEBUG: Using Transform pin %d\n", outputPinId);
                         break;
                 }
                 
                 if (outputPinId != -1) {
+                    printf("DEBUG: Creating connection from pin %d to pin %d\n", outputPinId, componentNode->inputPins[0].id);
                     int connectionId = m_nextConnectionId++;
                     m_connections.emplace_back(connectionId, outputPinId, componentNode->inputPins[0].id);
                     
                     // Mark pins as connected
+                    bool outputPinFound = false, inputPinFound = false;
                     for (auto& node : m_nodes) {
                         if (auto pin = node->getPinById(outputPinId)) {
                             pin->connected = true;
                             pin->connectedPinId = componentNode->inputPins[0].id;
+                            outputPinFound = true;
                         }
                         if (auto pin = node->getPinById(componentNode->inputPins[0].id)) {
                             pin->connected = true;
                             pin->connectedPinId = outputPinId;
+                            inputPinFound = true;
                         }
                     }
+                    printf("DEBUG: Pin marking - Output found: %s, Input found: %s\n", 
+                           outputPinFound ? "true" : "false", inputPinFound ? "true" : "false");
+                } else {
+                    printf("WARNING: No valid output pin found for component type\n");
                 }
+            } else {
+                printf("WARNING: Entity has no output pins or component has no input pins\n");
             }
+        }
+        
+        printf("DEBUG: loadEntityAsNodes completed successfully\n");
+        
+        } catch (const std::exception& e) {
+            printf("ERROR: Exception in loadEntityAsNodes: %s\n", e.what());
         }
     }    bool NodeEditorWindow::canConnect(int outputPinId, int inputPinId) {
         // Find the pins
@@ -1236,6 +1573,8 @@ namespace NodeEditor {
                 return (outputPinId == playerPinId);
                 
             case NodeType::Transform:
+            case NodeType::Rotation:
+            case NodeType::Scale:
             case NodeType::Collider:
             case NodeType::RigidBody:
                 // Basic components can only connect to the Transform output pin

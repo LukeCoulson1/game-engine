@@ -11,6 +11,7 @@
 #include <sstream>
 #include <cmath>
 #include <algorithm>
+#include <limits>
 
 int SceneWindow::s_windowCounter = 0;
 
@@ -347,12 +348,6 @@ void SceneWindow::renderSceneContent() {
                                              corners[0], corners[1], corners[2], corners[3],
                                              ImVec2(0, 0), ImVec2(1, 0), ImVec2(1, 1), ImVec2(0, 1));
                         
-                        // Debug output for transformed sprites
-                        printf("SCENEWINDOW RENDER DEBUG: Entity %u - Scale: %.2f,%.2f Rotation: %.1f\n", 
-                               entity, transform.scale.x, transform.scale.y, transform.rotation);
-                        printf("  Scaled size: %.1f x %.1f\n", scaledWidth, scaledHeight);
-                        fflush(stdout);
-                        
                         // Draw selection border around rotated sprite (approximate)
                         if (entity == m_selectedEntity) {
                             drawList->AddPolyline(corners, 4, IM_COL32(255, 200, 100, 255), ImDrawFlags_Closed, 2.0f);
@@ -366,14 +361,6 @@ void SceneWindow::renderSceneContent() {
                         SDL_Texture* sdlTexture = sprite.texture->getSDLTexture();
                         ImTextureID textureID = (ImTextureID)(intptr_t)sdlTexture;
                         drawList->AddImage(textureID, imageMin, imageMax);
-                        
-                        // Debug output for scaled sprites
-                        if (transform.scale.x != 1.0f || transform.scale.y != 1.0f) {
-                            printf("SCENEWINDOW RENDER DEBUG: Entity %u - Scale: %.2f,%.2f (no rotation)\n", 
-                                   entity, transform.scale.x, transform.scale.y);
-                            printf("  Scaled size: %.1f x %.1f\n", scaledWidth, scaledHeight);
-                            fflush(stdout);
-                        }
                         
                         // Draw selection border
                         if (entity == m_selectedEntity) {
@@ -524,7 +511,7 @@ void SceneWindow::handleInput() {
         worldMousePos.y = ((mousePos.y - canvasCenter.y) / m_zoomLevel) + m_cameraPosition.y;
           // Find entity at mouse position (using consistent coordinate system)
         EntityID clickedEntity = 0;
-        float closestDistance = 16.0f / m_zoomLevel; // Click tolerance adjusted for zoom
+        float closestDistance = std::numeric_limits<float>::max();
         
         if (m_scene) {
             auto allEntities = m_scene->getAllLivingEntities();
@@ -533,10 +520,74 @@ void SceneWindow::handleInput() {
                 
                 auto& transform = m_scene->getComponent<Transform>(entity);
                 Vector2 entityPos = transform.position;
-                float distance = sqrt(pow(worldMousePos.x - entityPos.x, 2) + 
-                                    pow(worldMousePos.y - entityPos.y, 2));
                 
-                if (distance < closestDistance) {
+                bool isInside = false;
+                float distance = std::numeric_limits<float>::max();
+                
+                // Check if entity has a sprite component for proper collision detection
+                if (m_scene->hasComponent<Sprite>(entity)) {
+                    auto& sprite = m_scene->getComponent<Sprite>(entity);
+                    if (sprite.texture && sprite.visible) {
+                        // Use actual texture dimensions for collision detection
+                        float texWidth = sprite.texture->getWidth();
+                        float texHeight = sprite.texture->getHeight();
+                        
+                        // Apply transform scale
+                        float scaledWidth = texWidth * transform.scale.x;
+                        float scaledHeight = texHeight * transform.scale.y;
+                        
+                        if (transform.rotation != 0.0f) {
+                            // For rotated sprites, check if point is inside rotated rectangle
+                            float angleRad = transform.rotation * (3.14159f / 180.0f);
+                            float cosA = cos(angleRad);
+                            float sinA = sin(angleRad);
+                            
+                            // Transform mouse position to local entity space (reverse rotation)
+                            float localX = (worldMousePos.x - entityPos.x) * cosA + (worldMousePos.y - entityPos.y) * sinA;
+                            float localY = -(worldMousePos.x - entityPos.x) * sinA + (worldMousePos.y - entityPos.y) * cosA;
+                            
+                            // Check if point is inside the non-rotated rectangle
+                            float halfW = scaledWidth / 2.0f;
+                            float halfH = scaledHeight / 2.0f;
+                            
+                            if (localX >= -halfW && localX <= halfW && localY >= -halfH && localY <= halfH) {
+                                isInside = true;
+                                distance = sqrt(localX * localX + localY * localY);
+                            }
+                        } else {
+                            // For non-rotated sprites, simple rectangle check
+                            float halfW = scaledWidth / 2.0f;
+                            float halfH = scaledHeight / 2.0f;
+                            
+                            float deltaX = worldMousePos.x - entityPos.x;
+                            float deltaY = worldMousePos.y - entityPos.y;
+                            
+                            if (deltaX >= -halfW && deltaX <= halfW && deltaY >= -halfH && deltaY <= halfH) {
+                                isInside = true;
+                                distance = sqrt(deltaX * deltaX + deltaY * deltaY);
+                            }
+                        }
+                    } else {
+                        // Sprite component exists but no texture or not visible - use small circle
+                        float circleRadius = 8.0f; // Small radius for invisible sprites
+                        distance = sqrt(pow(worldMousePos.x - entityPos.x, 2) + 
+                                      pow(worldMousePos.y - entityPos.y, 2));
+                        if (distance <= circleRadius) {
+                            isInside = true;
+                        }
+                    }
+                } else {
+                    // No sprite component - use small circle for selection
+                    float circleRadius = 8.0f; // Small radius for non-sprite entities
+                    distance = sqrt(pow(worldMousePos.x - entityPos.x, 2) + 
+                                  pow(worldMousePos.y - entityPos.y, 2));
+                    if (distance <= circleRadius) {
+                        isInside = true;
+                    }
+                }
+                
+                // Select the closest entity that contains the mouse position
+                if (isInside && distance < closestDistance) {
                     closestDistance = distance;
                     clickedEntity = entity;
                 }

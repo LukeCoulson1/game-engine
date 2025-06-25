@@ -7,6 +7,7 @@
 #include "SceneWindow.h"
 #include "NodeEditor.h"
 #include "SceneManager.h"
+#include "GameLogicWindow.h"
 #include <SDL2/SDL.h>
 #include <memory>
 #include <vector>
@@ -42,10 +43,10 @@ public:
     void showAssetBrowser();
     void showViewport();
     void showConsole();
-    void showCameraControls();
-    void showProceduralGeneration();
+    void showCameraControls();    void showProceduralGeneration();
     void showNodeEditor();
     void showSceneManager();
+    void showGameLogicWindow();
     
     // Editor functionality
     void createNewScene();
@@ -59,7 +60,8 @@ public:
     void saveScene(const std::string& filepath);
     void createEntity();
     void deleteEntity();
-      // Scene window management
+    
+    // Scene window management
     std::vector<std::unique_ptr<SceneWindow>>& getSceneWindows() { return m_sceneWindows; }
     
     // Scene Manager access
@@ -85,9 +87,9 @@ public:
     bool m_showAssetBrowser = true;
     bool m_showConsole = true;
     bool m_showCameraControls = true;
-    bool m_showProceduralGeneration = true;
-    bool m_showNodeEditor = false;
+    bool m_showProceduralGeneration = true;    bool m_showNodeEditor = false;
     bool m_showSceneManager = false;
+    bool m_showGameLogicWindow = false;
     bool m_showDemo = false;
       // Console
     std::vector<std::string> m_consoleMessages;
@@ -101,9 +103,11 @@ public:
     
     // Node Editor
     std::unique_ptr<NodeEditor::NodeEditorWindow> m_nodeEditor;
-    
-    // Scene Manager
+      // Scene Manager
     std::unique_ptr<SceneManager> m_sceneManager;
+    
+    // Game Logic Window
+    std::unique_ptr<GameLogicWindow> m_gameLogicWindow;
     
     // Rename dialog state
     bool m_showRenameDialog = false;

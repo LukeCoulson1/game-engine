@@ -34,6 +34,26 @@ public:
     Transform(const Vector2& pos) : position(pos), scale(1, 1), rotation(0.0f) {}
 };
 
+// Rotation component - separate from transform for node editor
+class Rotation : public Component {
+public:
+    float angle = 0.0f; // Rotation angle in degrees
+    
+    Rotation() : angle(0.0f) {} // Default constructor
+    Rotation(float rot) : angle(rot) {}
+};
+
+// Scale component - separate from transform for node editor  
+class Scale : public Component {
+public:
+    Vector2 scale{1, 1}; // Scale factors for X and Y
+    
+    Scale() : scale(1, 1) {} // Default constructor
+    Scale(float x, float y) : scale(x, y) {}
+    Scale(const Vector2& s) : scale(s) {}
+    Scale(float uniform) : scale(uniform, uniform) {}
+};
+
 // Sprite component for rendering
 class Sprite : public Component {
 public:

@@ -1,5 +1,6 @@
 #include "GameEditor.h"
 #include "SceneWindow.h"
+#include "GameLogicWindow.h"
 #include "../systems/CoreSystems.h"
 #include "../scene/Scene.h"
 #include "../systems/SystemManager.h"
@@ -28,9 +29,11 @@ GameEditor::GameEditor() {
     // Initialize procedural generation manager
     m_proceduralManager = std::make_unique<ProceduralGenerationManager>();
       // Initialize node editor
-    m_nodeEditor = std::make_unique<NodeEditor::NodeEditorWindow>();
-      // Initialize scene manager
+    m_nodeEditor = std::make_unique<NodeEditor::NodeEditorWindow>();    // Initialize scene manager
     m_sceneManager = std::make_unique<SceneManager>(this);
+    
+    // Initialize game logic window
+    m_gameLogicWindow = std::make_unique<GameLogicWindow>();
     
     // Initialize asset folder from config
     auto& config = ConfigManager::getInstance();
@@ -160,9 +163,9 @@ void GameEditor::renderUI() {    showMainMenuBar();
     if (m_showAssetBrowser) showAssetBrowser();
     if (m_showConsole) showConsole();
     if (m_showCameraControls) showCameraControls();
-    if (m_showProceduralGeneration) showProceduralGeneration();
-    if (m_showNodeEditor) showNodeEditor();
+    if (m_showProceduralGeneration) showProceduralGeneration();    if (m_showNodeEditor) showNodeEditor();
     if (m_showSceneManager) showSceneManager();
+    if (m_showGameLogicWindow) showGameLogicWindow();
     if (m_showDemo) ImGui::ShowDemoWindow(&m_showDemo);
     
     // Render all scene windows
@@ -292,9 +295,9 @@ void GameEditor::showMainMenuBar() {
             ImGui::MenuItem("Asset Browser", nullptr, &m_showAssetBrowser);
             ImGui::MenuItem("Console", nullptr, &m_showConsole);
             ImGui::MenuItem("Camera Controls", nullptr, &m_showCameraControls);
-            ImGui::MenuItem("Procedural Generation", nullptr, &m_showProceduralGeneration);
-            ImGui::MenuItem("Node Editor", nullptr, &m_showNodeEditor);
+            ImGui::MenuItem("Procedural Generation", nullptr, &m_showProceduralGeneration);            ImGui::MenuItem("Node Editor", nullptr, &m_showNodeEditor);
             ImGui::MenuItem("Scene Manager", nullptr, &m_showSceneManager);
+            ImGui::MenuItem("Game Logic Window", nullptr, &m_showGameLogicWindow);
             ImGui::Separator();
             ImGui::MenuItem("ImGui Demo", nullptr, &m_showDemo);
             ImGui::EndMenu();
@@ -855,46 +858,111 @@ void GameEditor::showInspector() {
                 m_activeSceneWindow->setDirty(true);
                 m_consoleMessages.push_back("Removed player components from entity " + std::to_string(selectedEntity));
             }
-        } else {
-            if (ImGui::Button("🎮 Make Player Entity")) {
-                // Add all core player components
-                if (!scene->hasComponent<PlayerController>(selectedEntity)) {
-                    scene->addComponent<PlayerController>(selectedEntity, PlayerController());
-                }
-                if (!scene->hasComponent<PlayerStats>(selectedEntity)) {
-                    scene->addComponent<PlayerStats>(selectedEntity, PlayerStats());
-                }
-                if (!scene->hasComponent<PlayerPhysics>(selectedEntity)) {
-                    scene->addComponent<PlayerPhysics>(selectedEntity, PlayerPhysics());
-                }
-                if (!scene->hasComponent<PlayerInventory>(selectedEntity)) {
-                    scene->addComponent<PlayerInventory>(selectedEntity, PlayerInventory());
-                }
-                if (!scene->hasComponent<PlayerAbilities>(selectedEntity)) {
-                    scene->addComponent<PlayerAbilities>(selectedEntity, PlayerAbilities());
-                }
-                if (!scene->hasComponent<PlayerState>(selectedEntity)) {
-                    scene->addComponent<PlayerState>(selectedEntity, PlayerState());
-                }
-                
-                // Update entity name to indicate it's a player
-                std::string currentName = scene->getEntityName(selectedEntity);
-                if (currentName.find("Player") == std::string::npos) {
-                    scene->setEntityName(selectedEntity, "Player_" + currentName);
-                }
-                
-                m_activeSceneWindow->setDirty(true);
-                m_consoleMessages.push_back("✅ Converted entity " + std::to_string(selectedEntity) + " to Player Entity");
+        }
+        
+        // Entity conversion section - always visible when an entity is selected
+        ImGui::Separator();
+        ImGui::Text("🔄 Convert Entity Type:");
+        ImGui::Spacing();
+        
+        if (ImGui::Button("🎮 Make Player Entity", ImVec2(-1, 0))) {
+            // Add all core player components
+            if (!scene->hasComponent<PlayerController>(selectedEntity)) {
+                scene->addComponent<PlayerController>(selectedEntity, PlayerController());
             }
-            ImGui::SameLine();
-            ImGui::TextDisabled("(?)");
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("Adds PlayerController, PlayerStats, PlayerPhysics,\nPlayerInventory, PlayerAbilities, and PlayerState components");
+            if (!scene->hasComponent<PlayerStats>(selectedEntity)) {
+                scene->addComponent<PlayerStats>(selectedEntity, PlayerStats());
             }
+            if (!scene->hasComponent<PlayerPhysics>(selectedEntity)) {
+                scene->addComponent<PlayerPhysics>(selectedEntity, PlayerPhysics());
+            }
+            if (!scene->hasComponent<PlayerInventory>(selectedEntity)) {
+                scene->addComponent<PlayerInventory>(selectedEntity, PlayerInventory());
+            }
+            if (!scene->hasComponent<PlayerAbilities>(selectedEntity)) {
+                scene->addComponent<PlayerAbilities>(selectedEntity, PlayerAbilities());
+            }
+            if (!scene->hasComponent<PlayerState>(selectedEntity)) {
+                scene->addComponent<PlayerState>(selectedEntity, PlayerState());
+            }
+            
+            // Update entity name to indicate it's a player
+            std::string currentName = scene->getEntityName(selectedEntity);
+            if (currentName.find("Player") == std::string::npos) {
+                scene->setEntityName(selectedEntity, "Player_" + currentName);
+            }
+            
+            m_activeSceneWindow->setDirty(true);
+            m_consoleMessages.push_back("✅ Converted entity " + std::to_string(selectedEntity) + " to Player Entity");
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("(?)");
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Adds PlayerController, PlayerStats, PlayerPhysics,\nPlayerInventory, PlayerAbilities, and PlayerState components");
+        }
+        
+        // Make NPC Entity
+        if (ImGui::Button("🤖 Make NPC Entity", ImVec2(-1, 0))) {
+            // Add basic NPC components if not present
+            if (!scene->hasComponent<Sprite>(selectedEntity)) {
+                scene->addComponent<Sprite>(selectedEntity, Sprite());
+            }
+            if (!scene->hasComponent<Collider>(selectedEntity)) {
+                scene->addComponent<Collider>(selectedEntity, Collider());
+            }
+            if (!scene->hasComponent<PlayerStats>(selectedEntity)) {
+                scene->addComponent<PlayerStats>(selectedEntity, PlayerStats());
+            }
+            
+            // Update entity name to indicate it's an NPC
+            std::string currentName = scene->getEntityName(selectedEntity);
+            if (currentName.find("NPC") == std::string::npos) {
+                scene->setEntityName(selectedEntity, "NPC_" + currentName);
+            }
+            
+            m_activeSceneWindow->setDirty(true);
+            m_consoleMessages.push_back("✅ Converted entity " + std::to_string(selectedEntity) + " to NPC Entity");
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("(?)");
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Adds Sprite, Collider, and PlayerStats components\nfor basic NPC functionality");
+        }
+        
+        // Make Enemy Entity
+        if (ImGui::Button("⚔️ Make Enemy Entity", ImVec2(-1, 0))) {
+            // Add basic enemy components if not present
+            if (!scene->hasComponent<Sprite>(selectedEntity)) {
+                scene->addComponent<Sprite>(selectedEntity, Sprite());
+            }
+            if (!scene->hasComponent<Collider>(selectedEntity)) {
+                scene->addComponent<Collider>(selectedEntity, Collider());
+            }
+            if (!scene->hasComponent<RigidBody>(selectedEntity)) {
+                scene->addComponent<RigidBody>(selectedEntity, RigidBody());
+            }
+            if (!scene->hasComponent<PlayerStats>(selectedEntity)) {
+                scene->addComponent<PlayerStats>(selectedEntity, PlayerStats());
+            }
+            
+            // Update entity name to indicate it's an enemy
+            std::string currentName = scene->getEntityName(selectedEntity);
+            if (currentName.find("Enemy") == std::string::npos) {
+                scene->setEntityName(selectedEntity, "Enemy_" + currentName);
+            }
+            
+            m_activeSceneWindow->setDirty(true);
+            m_consoleMessages.push_back("✅ Converted entity " + std::to_string(selectedEntity) + " to Enemy Entity");
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("(?)");
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Adds Sprite, Collider, RigidBody, and PlayerStats\ncomponents for combat-ready enemy");
         }
         
     } else {
         ImGui::Text("No entity selected");
+        ImGui::TextWrapped("Select an entity from the scene to view and edit its components.");
     }
     
     ImGui::End();
@@ -1773,6 +1841,12 @@ void GameEditor::showNodeEditor() {
 void GameEditor::showSceneManager() {
     if (m_sceneManager) {
         m_sceneManager->show(&m_showSceneManager);
+    }
+}
+
+void GameEditor::showGameLogicWindow() {
+    if (m_gameLogicWindow) {
+        m_gameLogicWindow->show(&m_showGameLogicWindow, m_activeSceneWindow);
     }
 }
 

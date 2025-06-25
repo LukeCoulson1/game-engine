@@ -81,8 +81,7 @@ public:
     void setSystemSignature(ComponentMask signature) {
         systemManager->setSignature<T>(signature);
     }
-    
-    // Scene lifecycle
+      // Scene lifecycle
     virtual void initialize();
     virtual void update(float deltaTime);
     virtual void render(Renderer* renderer);
