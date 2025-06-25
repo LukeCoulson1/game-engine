@@ -1,0 +1,12 @@
+# C++ Game Engine Dependencies
+# Install these using vcpkg or your preferred package manager:
+# vcpkg install sdl2 sdl2-image sdl2-mixer sdl2-ttf imgui glm nlohmann-json
+# Or manually download and build from source
+
+# SDL2 - Cross-platform multimedia library
+# SDL2_image - Image loading support
+# SDL2_mixer - Audio mixing library  
+# SDL2_ttf - TrueType font support
+# Dear ImGui - Immediate mode GUI library
+# GLM - OpenGL Mathematics library
+# nlohmann/json - JSON parsing library

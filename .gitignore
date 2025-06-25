@@ -1,0 +1,234 @@
+# Game Engine .gitignore
+
+# ==========================================
+# ASSET FILES - Exclude all asset content
+# ==========================================
+
+# Main assets directory
+assets/
+!assets/.gitkeep
+
+# Asset file types (if assets directory is tracked)
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tga
+*.dds
+*.ktx
+*.astc
+
+# Audio assets
+*.wav
+*.mp3
+*.ogg
+*.flac
+*.aac
+*.m4a
+
+# 3D model assets
+*.obj
+*.fbx
+*.dae
+*.3ds
+*.blend
+*.max
+*.ma
+*.mb
+
+# Texture and material files
+*.mtl
+*.mat
+*.psd
+*.xcf
+
+# Font assets
+*.ttf
+*.otf
+*.woff
+*.woff2
+
+# Video assets
+*.mp4
+*.avi
+*.mov
+*.wmv
+*.mkv
+
+# ==========================================
+# BUILD AND TEMPORARY FILES
+# ==========================================
+
+# Build directories
+build/
+bin/
+lib/
+out/
+x64/
+x86/
+Debug/
+Release/
+RelWithDebInfo/
+MinSizeRel/
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+
+# Visual Studio files
+*.vcxproj
+*.vcxproj.user
+*.vcxproj.filters
+*.sln
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.pdb
+*.ilk
+*.obj
+*.exe
+*.dll
+*.lib
+*.exp
+
+# ==========================================
+# DEVELOPMENT ENVIRONMENT FILES
+# ==========================================
+
+# VS Code
+.vscode/
+!.vscode/tasks.json
+!.vscode/launch.json
+
+# Visual Studio
+.vs/
+*.aps
+*.ncb
+*.opendb
+*.opensdf
+*.sdf
+*.cachefile
+*.VC.db
+*.VC.VC.opendb
+
+# ImGui configuration (user-specific)
+imgui.ini
+
+# Editor configuration (user-specific)
+editor_config.json
+
+# ==========================================
+# DEPENDENCY MANAGEMENT
+# ==========================================
+
+# vcpkg (if not using as submodule)
+vcpkg/installed/
+vcpkg/buildtrees/
+vcpkg/packages/
+vcpkg/downloads/
+
+# Conan
+conanbuildinfo.*
+conaninfo.txt
+conandata.yml
+
+# ==========================================
+# TEMPORARY AND LOG FILES
+# ==========================================
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+*~
+*.swp
+*.swo
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# ==========================================
+# PLATFORM SPECIFIC
+# ==========================================
+
+# Windows
+Thumbs.db
+Desktop.ini
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+
+# Linux
+*~
+.directory
+
+# ==========================================
+# TESTING AND DOCUMENTATION
+# ==========================================
+
+# Test outputs
+test_results/
+coverage/
+*.coverage
+
+# Documentation build
+docs/_build/
+docs/html/
+docs/latex/
+
+# ==========================================
+# CUSTOM PROJECT SPECIFIC
+# ==========================================
+
+# Game engine specific generated files
+scenes/*.scene
+saves/
+cache/
+
+# Asset processing outputs
+processed_assets/
+atlas/
+compressed/
+
+# Configuration files with sensitive data
+config/local.json
+.env
+.env.local
+
+# User-generated content directories
+user_content/
+mods/
+plugins/
+
+# ==========================================
+# EXCEPTIONS - Files to track
+# ==========================================
+
+# Keep essential asset files for testing (uncomment if needed)
+# !assets/test/
+# !assets/test/**/*
+# !assets/samples/
+# !assets/samples/**/*
+
+# Keep documentation assets
+!docs/images/
+!docs/images/**/*
+
+# Keep example/template assets
+# !assets/examples/
+# !assets/examples/**/*
