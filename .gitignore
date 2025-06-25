@@ -132,6 +132,20 @@ vcpkg/installed/
 vcpkg/buildtrees/
 vcpkg/packages/
 vcpkg/downloads/
+vcpkg/ports/
+vcpkg/scripts/
+vcpkg/toolsrc/
+vcpkg/.vs/
+vcpkg/vcpkg.exe
+vcpkg/vcpkg
+vcpkg/*.txt
+vcpkg/*.json
+vcpkg/*.cmake
+vcpkg/*.log
+
+# vcpkg manifest mode files (generated)
+vcpkg_installed/
+.vcpkg-root
 
 # Conan
 conanbuildinfo.*
@@ -214,6 +228,12 @@ config/local.json
 user_content/
 mods/
 plugins/
+
+# ComfyUI related files (AI generation)
+*ComfyUI*
+output/
+comfyui/
+ComfyUI/
 
 # ==========================================
 # EXCEPTIONS - Files to track
