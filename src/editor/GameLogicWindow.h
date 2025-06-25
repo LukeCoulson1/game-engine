@@ -8,6 +8,7 @@
 #include "../scene/Scene.h"
 #include "../core/Engine.h"
 #include "../graphics/Renderer.h"
+#include "../systems/PlayerSystem.h"
 
 // Forward declarations
 class SceneWindow;
@@ -93,6 +94,7 @@ private:    // Window state
     SceneWindow* m_activeScene = nullptr;
     std::shared_ptr<Scene> m_runtimeScene = nullptr;
     std::unique_ptr<Renderer> m_runtimeRenderer = nullptr;
+    std::unique_ptr<PlayerSystem> m_playerSystem = nullptr;
     std::string m_loadedScenePath;
     std::vector<std::string> m_availableScenes;
     

@@ -4,7 +4,17 @@ A complete 2D game engine built in C++ designed for creating Zelda-like top-down
 
 ![Engine Screenshot](docs/editor-screenshot.png)
 
-## 🚀 Features
+## � Documentation
+
+For comprehensive documentation, see the [Documentation Index](docs/README.md) which includes:
+
+- **[🔧 Fixes](docs/fixes/)** - Bug fixes and issue resolutions
+- **[✨ Features](docs/features/)** - New functionality and capabilities  
+- **[🎮 Systems](docs/systems/)** - Core engine systems documentation
+- **[🛠️ Editor](docs/editor/)** - Editor tools and interfaces
+- **[📖 Guides](docs/guides/)** - User guides and tutorials
+
+## �🚀 Features
 
 ### 🎮 Core Engine
 - **Entity-Component-System (ECS)** architecture for flexible game object management

@@ -102,7 +102,7 @@ void PlayerSystem::update(Scene* scene, float deltaTime) {
         updateStatusEffects(stats, deltaTime);
         
         // Update physics
-        updatePhysics(physics, controller->moveDirection, deltaTime);
+        updatePhysics(physics, controller, controller->moveDirection, deltaTime);
         handleCollisions(scene, entity, physics, deltaTime);
         
         // Update state machine
@@ -216,8 +216,8 @@ bool PlayerSystem::isKeyPressed(const PlayerController* controller, const std::s
     return false;
 }
 
-void PlayerSystem::updatePhysics(PlayerPhysics* physics, const Vector2& inputDirection, float deltaTime) {
-    if (!physics) return;
+void PlayerSystem::updatePhysics(PlayerPhysics* physics, const PlayerController* controller, const Vector2& inputDirection, float deltaTime) {
+    if (!physics || !controller) return;
     
     // Apply external forces
     physics->acceleration = physics->externalForces * (1.0f / physics->mass);
@@ -265,8 +265,8 @@ void PlayerSystem::updatePhysics(PlayerPhysics* physics, const Vector2& inputDir
         if (abs(physics->velocity.y) < 1.0f) physics->velocity.y = 0.0f;
     }
     
-    // Apply gravity for platformer movement
-    if (!physics->isGrounded) {
+    // Apply gravity only for platformer/physics movement types
+    if (!physics->isGrounded && shouldApplyGravity(controller)) {
         applyGravity(physics, deltaTime);
     }
     
@@ -289,6 +289,14 @@ void PlayerSystem::updatePhysics(PlayerPhysics* physics, const Vector2& inputDir
     if (physics->jumpBufferTimer > 0.0f) {
         physics->jumpBufferTimer -= deltaTime;
     }
+}
+
+bool PlayerSystem::shouldApplyGravity(const PlayerController* controller) const {
+    if (!controller) return false;
+    
+    // Only apply gravity for platformer and physics-based movement
+    return controller->movementType == PlayerController::MovementType::Platformer ||
+           controller->movementType == PlayerController::MovementType::Physics;
 }
 
 void PlayerSystem::applyGravity(PlayerPhysics* physics, float deltaTime) {
@@ -720,12 +728,8 @@ void PlayerSystem::useItem(Scene* scene, EntityID playerEntity, int itemIndex) {
         
         // Remove item from hotbar if quantity reaches 0
         if (item.quantity <= 0) {
-            inventory.hotbar[itemIndex].reset(); // Reset shared_ptr to nullptr
+            // Clear the hotbar slot
+            inventory.hotbar[itemIndex] = nullptr;
         }
-    }
-    
-    // Trigger item pickup event (you might want a separate ItemUsed event)
-    if (itemUsed) {
-        triggerEvent(PlayerEvent::ItemPickup, playerEntity, &item);
     }
 }

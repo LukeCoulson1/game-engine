@@ -2,6 +2,7 @@
 #include "SceneWindow.h"
 #include "../components/Components.h"
 #include <imgui.h>
+#include <SDL2/SDL.h>
 #include "../../external/imgui/misc/cpp/imgui_stdlib.h"
 #include <sstream>
 #include <iomanip>
@@ -10,33 +11,45 @@
 
 GameLogicWindow::GameLogicWindow() {
     m_lastFrameTime = std::chrono::high_resolution_clock::now();
+    m_playerSystem = std::make_unique<PlayerSystem>();
     initializeCodeTemplates();
     scanForAvailableScenes();      // Default user code template
-    m_userCode = "// Game Logic Playground - Live Scene Testing!\n"
+    m_userCode = "// Game Logic Playground - Player Controller Testing!\n"
                  "// \n"
-                 "// SETUP:\n"
-                 "// 1. Create entities in your Scene Window\n"
-                 "// 2. Press F5 to start live gameplay testing (auto-creates backup)\n"
-                 "// 3. Watch entities move in real-time in the Scene Window!\n"
-                 "// 4. Press Ctrl+Shift+R to reset scene to original state\n"
+                 "// PLAYER CONTROLLER SETUP:\n"
+                 "// 1. Create an entity in your Scene Window\n"
+                 "// 2. Select the entity and add a Player Controller component in the Inspector\n"
+                 "// 3. Make sure the entity has a Transform component\n"
+                 "// 4. Press F5 to start live gameplay testing (auto-creates backup)\n"
+                 "// 5. Use WASD keys to move the player entity!\n"
+                 "// 6. Hold Shift to run, Space to jump (if physics enabled)\n"
+                 "// 7. Press Shift+F5 to stop runtime\n"
+                 "// 8. Press Ctrl+Shift+R to reset scene to original state\n"
                  "//\n"
-                 "// This code runs directly on your active scene - no copying needed!\n"
-                 "// You can see all changes live in the Scene Window.\n"
-                 "// A backup is created automatically so you can reset anytime.\n"
+                 "// The PlayerSystem automatically handles input for entities with PlayerController!\n"
+                 "// No additional code is needed - just press F5 and start moving with WASD!\n"
+                 "// Check the console below for debug messages when keys are pressed.\n"
                  "\n"
                  "void updateGame(float deltaTime) {\n"
-                 "    // Live animation example - figure-8 dance pattern\n"
-                 "    // This runs directly on your scene entities!\n"
-                 "    // Add player controls, physics, game logic here\n"
+                 "    // Your custom game logic goes here\n"
+                 "    // The PlayerSystem automatically handles:\n"
+                 "    // - WASD movement input\n"
+                 "    // - Collision detection\n"
+                 "    // - Physics updates\n"
+                 "    // - Animation state changes\n"
+                 "    \n"
+                 "    // Example: Add custom behavior for player entities\n"
+                 "    // You can check for specific actions, update game state, etc.\n"
                  "}\n"
                  "\n"
                  "void onStart() {\n"
-                 "    log(\"Live gameplay started! Watch the Scene Window!\");\n"
-                 "    log(\"Press Ctrl+Shift+R to reset scene to original state\");\n"
+                 "    // Called when F5 is pressed to start runtime\n"
+                 "    // Add PlayerController component to entities, then use WASD to move!\n"
+                 "    // Hold Shift to run, Space to jump, 1-4 for abilities\n"
                  "}\n"
                  "\n"
                  "void onStop() {\n"
-                 "    log(\"Live gameplay stopped!\");\n"
+                 "    // Called when Shift+F5 is pressed to stop runtime\n"
                  "}";
 }
 
@@ -627,6 +640,42 @@ void GameLogicWindow::updateRuntime(float deltaTime) {
     m_frameTime = deltaTime;
     m_fps = (deltaTime > 0.0f) ? 1.0f / deltaTime : 0.0f;
     
+    // Handle player input and update player system if we have an active scene
+    if (m_activeScene && m_activeScene->getScene() && m_playerSystem) {
+        Scene* scene = m_activeScene->getScene().get();
+        
+        // Ensure SDL events are processed to get current keyboard state
+        SDL_PumpEvents();
+        
+        // Get input manager from engine
+        auto& engine = Engine::getInstance();
+        auto* inputManager = engine.getInputManager();
+        
+        if (inputManager) {
+            // Get keyboard state
+            const Uint8* keyboardState = SDL_GetKeyboardState(nullptr);
+            
+            // Debug: Check if any movement keys are pressed
+            bool wPressed = keyboardState[SDL_SCANCODE_W];
+            bool aPressed = keyboardState[SDL_SCANCODE_A];
+            bool sPressed = keyboardState[SDL_SCANCODE_S];
+            bool dPressed = keyboardState[SDL_SCANCODE_D];
+            
+            if (wPressed || aPressed || sPressed || dPressed) {
+                log("Keys pressed: W=" + std::to_string(wPressed) + 
+                    " A=" + std::to_string(aPressed) + 
+                    " S=" + std::to_string(sPressed) + 
+                    " D=" + std::to_string(dPressed), LogEntry::DEBUG);
+            }
+            
+            // Handle player input
+            m_playerSystem->handleInput(scene, keyboardState, deltaTime);
+            
+            // Update player system
+            m_playerSystem->update(scene, deltaTime);
+        }
+    }
+    
     // Execute user update code (operates directly on active scene)
     executeUserCode();
 }
@@ -692,33 +741,11 @@ void GameLogicWindow::executeUserCode() {
     
     auto scene = m_activeScene->getScene();
     
-    // For now, we'll implement a simple dance animation as an example
-    // In a real implementation, you'd compile and execute the user's code
+    // TODO: In a real implementation, you'd compile and execute the user's code
+    // For now, this is a placeholder that doesn't run any automatic animations
     
-    static float time = 0.0f;
-    time += m_frameTime;
-    
-    auto entities = scene->getAllLivingEntities();
-    for (auto entity : entities) {
-        if (scene->hasComponent<Transform>(entity)) {
-            auto& transform = scene->getComponent<Transform>(entity);
-            
-            // Simple dance animation - figure-8 pattern
-            float radius = 30.0f;
-            float speed = 2.0f;
-            
-            transform.position.x = 100.0f + radius * sin(time * speed);
-            transform.position.y = 100.0f + radius * sin(time * speed * 2.0f) * 0.5f;
-            transform.rotation = time * 45.0f; // Spin
-            
-            // Mark the scene as dirty so it gets re-rendered
-            m_activeScene->setDirty(true);
-        }
-    }
-    
-    if (m_frameCount % 60 == 0) { // Every 60 frames
-        log("User update code executed (frame " + std::to_string(m_frameCount) + ")", LogEntry::DEBUG);
-    }
+    // Mark the scene as dirty so player controller changes get re-rendered
+    m_activeScene->setDirty(true);
 }
 
 void GameLogicWindow::validateCode(const std::string& code) {
@@ -906,7 +933,50 @@ void GameLogicWindow::dumpSceneState() {
 }
 
 void GameLogicWindow::initializeCodeTemplates() {
-    m_codeTemplates = {        {"Live Player Control", R"(// Live player movement example
+    m_codeTemplates = {
+        {"Player Controller Demo", 
+R"(// Player Controller Testing - Full Setup
+// INSTRUCTIONS:
+// 1. Create an entity in Scene Window
+// 2. Select entity and add Player Controller component in Inspector
+// 3. Press F5 to start - use WASD to move!
+
+void updateGame(float deltaTime) {
+    // Find entities with PlayerController components
+    auto entities = scene->getAllLivingEntities();
+    
+    for (auto entity : entities) {
+        if (scene->hasComponent<PlayerController>(entity)) {
+            auto& controller = scene->getComponent<PlayerController>(entity);
+            auto& transform = scene->getComponent<Transform>(entity);
+            
+            // You can add custom behavior here:
+            // - Custom animations based on movement state
+            // - Special abilities or interactions
+            // - Game-specific logic
+            
+            // Example: Change entity color when running
+            if (scene->hasComponent<Sprite>(entity)) {
+                auto& sprite = scene->getComponent<Sprite>(entity);
+                if (controller.isRunning) {
+                    sprite.color = Color(255, 200, 200, 255); // Reddish when running
+                } else {
+                    sprite.color = Color(255, 255, 255, 255); // Normal when walking
+                }
+            }
+        }
+    }
+}
+
+void onStart() {
+    // Player Controller Demo started
+    // Controls: WASD = move, Shift = run, Space = jump
+    // Make sure you have PlayerController component on an entity!
+}
+
+void onStop() {
+    // Player Controller Demo stopped
+})"},        {"Live Player Control", R"(// Live player movement example
 // Press F5 to start, Ctrl+Shift+R to reset scene
 void updateGame(float deltaTime) {
     // Control the selected entity with keyboard

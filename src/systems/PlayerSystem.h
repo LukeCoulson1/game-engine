@@ -66,7 +66,8 @@ private:
     bool isKeyPressed(const PlayerController* controller, const std::string& action, const Uint8* keyboardState);
     
     // Physics helpers
-    void updatePhysics(PlayerPhysics* physics, const Vector2& inputDirection, float deltaTime);
+    void updatePhysics(PlayerPhysics* physics, const PlayerController* controller, const Vector2& inputDirection, float deltaTime);
+    bool shouldApplyGravity(const PlayerController* controller) const;
     void applyGravity(PlayerPhysics* physics, float deltaTime);
     void handleCollisions(Scene* scene, EntityID playerEntity, PlayerPhysics* physics, float deltaTime);
     

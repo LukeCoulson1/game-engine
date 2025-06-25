@@ -52,6 +52,11 @@ namespace NodeEditor {
                     break;
                 case NodeType::Transform:
                     componentData = std::make_shared<Transform>();
+                    // Set larger constraints for transform nodes
+                    minSize = ImVec2(200, 140);
+                    maxSize = ImVec2(400, 300);
+                    // Start with larger default size for transform nodes
+                    size = ImVec2(240, 140);
                     break;
                 case NodeType::Rotation:
                     componentData = std::make_shared<Rotation>();
@@ -94,6 +99,8 @@ namespace NodeEditor {
             drawRotationNodeContent(nodePos, nodeSize);
         } else if (type == NodeType::Scale) {
             drawScaleNodeContent(nodePos, nodeSize);
+        } else if (type == NodeType::Transform) {
+            drawTransformNodeContent(nodePos, nodeSize);
         }
         
         // Draw resize handle for selected nodes
@@ -376,6 +383,39 @@ namespace NodeEditor {
         }
     }
 
+    void Node::drawTransformNodeContent(ImVec2 nodePos, ImVec2 nodeSize) {
+        // Make sure we have component data
+        if (!componentData) {
+            return;
+        }
+        
+        auto transformComponent = std::static_pointer_cast<Transform>(componentData);
+        if (!transformComponent) {
+            return;
+        }
+        
+        // Draw static text labels using ImDrawList since ImGui controls don't work in this context
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        
+        // Position labels and values
+        char posText[64];
+        snprintf(posText, sizeof(posText), "Pos: %.1f, %.1f", transformComponent->position.x, transformComponent->position.y);
+        drawList->AddText(ImVec2(nodePos.x + 10, nodePos.y + 35), IM_COL32(200, 200, 200, 255), posText);
+        
+        // Scale labels and values
+        char scaleText[64];
+        snprintf(scaleText, sizeof(scaleText), "Scale: %.2f, %.2f", transformComponent->scale.x, transformComponent->scale.y);
+        drawList->AddText(ImVec2(nodePos.x + 10, nodePos.y + 55), IM_COL32(200, 200, 200, 255), scaleText);
+        
+        // Rotation label and value
+        char rotText[64];
+        snprintf(rotText, sizeof(rotText), "Rot: %.1f°", transformComponent->rotation);
+        drawList->AddText(ImVec2(nodePos.x + 10, nodePos.y + 75), IM_COL32(200, 200, 200, 255), rotText);
+        
+        // Add a note about editing
+        drawList->AddText(ImVec2(nodePos.x + 10, nodePos.y + 100), IM_COL32(150, 150, 150, 255), "Double-click to edit");
+    }
+
     bool Node::isImageFile(const std::string& extension) {
         std::string lowerExt = extension;
         std::transform(lowerExt.begin(), lowerExt.end(), lowerExt.begin(), ::tolower);
@@ -435,8 +475,11 @@ namespace NodeEditor {
                             // If this node is connected to an entity and we have an active scene,
                             // immediately apply the texture to the entity
                             if (inputPins.size() > 0 && inputPins[0].connected) {
-                                // This node is connected, we should find the associated entity and update it
-                                // The NodeEditorWindow will handle this through the normal apply process
+                                printf("DEBUG: Sprite texture updated, node is connected - triggering callback\n");
+                                // Trigger the callback to notify the NodeEditorWindow
+                                if (onComponentDataChanged) {
+                                    onComponentDataChanged(this);
+                                }
                             }
                         }
                     }
@@ -584,6 +627,17 @@ namespace NodeEditor {
         drawConnections();
         drawConnectionInProgress();
         
+        // Handle transform edit popups
+        for (auto& node : m_nodes) {
+            if (node->type == NodeType::Transform) {
+                std::string popupId = "EditTransform##" + std::to_string(node->id);
+                if (ImGui::BeginPopup(popupId.c_str())) {
+                    drawTransformEditPopup(node.get());
+                    ImGui::EndPopup();
+                }
+            }
+        }
+        
         ImGui::End();
     }
 
@@ -686,7 +740,52 @@ namespace NodeEditor {
                 drawList->AddBezierCubic(p1, cp1, cp2, p2, IM_COL32(255, 255, 100, 200), 2.0f * m_zoom);
             }
         }
-    }    void NodeEditorWindow::handleInput() {
+    }
+
+    void NodeEditorWindow::drawTransformEditPopup(Node* node) {
+        if (!node || !node->componentData) return;
+        
+        auto transformComponent = std::static_pointer_cast<Transform>(node->componentData);
+        if (!transformComponent) return;
+        
+        ImGui::Text("Edit Transform Parameters");
+        ImGui::Separator();
+        
+        // Position controls
+        ImGui::Text("Position:");
+        ImGui::DragFloat("X##pos", &transformComponent->position.x, 1.0f, -10000.0f, 10000.0f, "%.1f");
+        ImGui::DragFloat("Y##pos", &transformComponent->position.y, 1.0f, -10000.0f, 10000.0f, "%.1f");
+        
+        ImGui::Separator();
+        
+        // Scale controls
+        ImGui::Text("Scale:");
+        ImGui::DragFloat("X##scale", &transformComponent->scale.x, 0.01f, 0.1f, 5.0f, "%.2f");
+        ImGui::DragFloat("Y##scale", &transformComponent->scale.y, 0.01f, 0.1f, 5.0f, "%.2f");
+        
+        ImGui::Separator();
+        
+        // Rotation control
+        ImGui::Text("Rotation:");
+        ImGui::SliderFloat("Angle##rot", &transformComponent->rotation, -180.0f, 180.0f, "%.1f°");
+        
+        ImGui::Separator();
+        
+        if (ImGui::Button("Apply to Entity")) {
+            if (m_activeScene && m_activeScene->hasSelectedEntity()) {
+                applyComponentToEntity(m_activeScene->getSelectedEntity(), m_activeScene->getScene().get(), node);
+            }
+            ImGui::CloseCurrentPopup();
+        }
+        
+        ImGui::SameLine();
+        
+        if (ImGui::Button("Close")) {
+            ImGui::CloseCurrentPopup();
+        }
+    }
+
+    void NodeEditorWindow::handleInput() {
         ImGuiIO& io = ImGui::GetIO();
         ImVec2 mousePos = io.MousePos;
         bool clickedOnPin = false;
@@ -823,6 +922,7 @@ namespace NodeEditor {
                 // Check if clicking on a node or resize handle
                 bool clickedOnNode = false;
                 bool clickedOnResizeHandle = false;
+                bool clickedOnNodeControl = false;
                 
                 for (auto& node : m_nodes) {
                     ImVec2 relativePos = ImVec2((mousePos.x - m_canvasPos.x - m_scrolling.x) / m_zoom, 
@@ -831,6 +931,25 @@ namespace NodeEditor {
                     if (node->isInside(relativePos)) {
                         clickedOnNode = true;
                         
+                        // For Transform, Scale, and Rotation nodes, check if clicking in the control area
+                        if (node->type == NodeType::Transform || node->type == NodeType::Scale || node->type == NodeType::Rotation) {
+                            // Control area starts at y + 30 (below the title)
+                            ImVec2 nodeSize = node->getNodeSize();
+                            if (relativePos.y > node->position.y + 30 && 
+                                relativePos.y < node->position.y + nodeSize.y - 10 &&
+                                relativePos.x > node->position.x + 5 && 
+                                relativePos.x < node->position.x + nodeSize.x - 5) {
+                                clickedOnNodeControl = true;
+                                
+                                // Check for double-click to open edit popup
+                                if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+                                    if (node->type == NodeType::Transform) {
+                                        ImGui::OpenPopup(("EditTransform##" + std::to_string(node->id)).c_str());
+                                    }
+                                }
+                            }
+                        }
+                        
                         // Check if clicking on resize handle for already selected nodes
                         if (node->selected && node->isOnResizeHandle(relativePos)) {
                             m_resizing = true;
@@ -838,12 +957,15 @@ namespace NodeEditor {
                             m_resizeStartPos = relativePos;
                             m_resizeStartSize = node->getNodeSize();
                             clickedOnResizeHandle = true;
-                        } else {
-                            // Select the node and set up for dragging
+                        } else if (!clickedOnNodeControl) {
+                            // Only start dragging if not clicking on controls
                             selectNode(node->id);
                             m_dragging = true;
                             m_draggedNodeId = node->id;
                             m_dragOffset = ImVec2(relativePos.x - node->position.x, relativePos.y - node->position.y);
+                        } else {
+                            // Just select the node if clicking on controls
+                            selectNode(node->id);
                         }
                         break;
                     }
@@ -857,8 +979,11 @@ namespace NodeEditor {
             // Canvas dragging (middle mouse or left mouse when not on node and not resizing)
             if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle) || 
                 (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && !m_dragging && !m_creatingConnection && !m_resizing)) {
-                m_scrolling.x += io.MouseDelta.x;
-                m_scrolling.y += io.MouseDelta.y;
+                // Only block canvas panning if actively editing a control (not just hovering)
+                if (!ImGui::IsAnyItemActive()) {
+                    m_scrolling.x += io.MouseDelta.x;
+                    m_scrolling.y += io.MouseDelta.y;
+                }
             }
         }
         
@@ -1089,6 +1214,11 @@ namespace NodeEditor {
         
         auto node = std::make_unique<Node>(nodeId, type, nodeName, position);
         
+        // Set up callback for component data changes
+        node->onComponentDataChanged = [this](Node* changedNode) {
+            this->onNodeComponentDataChanged(changedNode);
+        };
+        
         // If creating an Entity node and we have a selected entity, associate them
         if (type == NodeType::Entity && m_activeScene && m_activeScene->hasSelectedEntity()) {
             node->associatedEntity = m_activeScene->getSelectedEntity();
@@ -1143,6 +1273,20 @@ namespace NodeEditor {
             case NodeType::PlayerController:
                 if (!scene->hasComponent<PlayerController>(entity)) {
                     scene->addComponent<PlayerController>(entity, *std::static_pointer_cast<PlayerController>(componentNode->componentData));
+                    
+                    // Auto-add required PlayerSystem components
+                    if (!scene->hasComponent<PlayerStats>(entity)) {
+                        scene->addComponent<PlayerStats>(entity, PlayerStats());
+                    }
+                    if (!scene->hasComponent<PlayerPhysics>(entity)) {
+                        scene->addComponent<PlayerPhysics>(entity, PlayerPhysics());
+                    }
+                    if (!scene->hasComponent<PlayerState>(entity)) {
+                        scene->addComponent<PlayerState>(entity, PlayerState());
+                    }
+                    if (!scene->hasComponent<PlayerAbilities>(entity)) {
+                        scene->addComponent<PlayerAbilities>(entity, PlayerAbilities());
+                    }
                 }
                 break;
             case NodeType::PlayerStats:
@@ -1173,6 +1317,10 @@ namespace NodeEditor {
             case NodeType::Transform:
                 if (!scene->hasComponent<Transform>(entity)) {
                     scene->addComponent<Transform>(entity, *std::static_pointer_cast<Transform>(componentNode->componentData));
+                } else {
+                    // Update existing transform component
+                    auto& transformComp = scene->getComponent<Transform>(entity);
+                    transformComp = *std::static_pointer_cast<Transform>(componentNode->componentData);
                 }
                 break;
             case NodeType::Rotation:
@@ -1205,6 +1353,11 @@ namespace NodeEditor {
                 break;
             default:
                 break;
+        }
+        
+        // Mark the scene window as dirty to trigger a visual update
+        if (m_activeScene) {
+            m_activeScene->setDirty(true);
         }
     }
 
@@ -1590,6 +1743,40 @@ namespace NodeEditor {
         // For this simple system, cycles shouldn't be possible since
         // we only connect Entity -> Component (one direction)
         return false;
+    }
+
+    void NodeEditorWindow::onNodeComponentDataChanged(Node* node) {
+        if (!node || !m_activeScene) return;
+        
+        // Check if this node is connected to an entity
+        bool isConnected = false;
+        EntityID connectedEntity = 0;
+        
+        // Look for connections where this node's input pin is connected to an entity's output pin
+        for (const auto& connection : m_connections) {
+            // Check if this node has the input pin for this connection
+            if (node->getPinById(connection.inputPinId)) {
+                // Find the entity node that has the output pin
+                for (auto& entityNode : m_nodes) {
+                    if (entityNode->type == NodeType::Entity && 
+                        entityNode->getPinById(connection.outputPinId)) {
+                        isConnected = true;
+                        connectedEntity = entityNode->associatedEntity;
+                        break;
+                    }
+                }
+            }
+            if (isConnected) break;
+        }
+        
+        // If connected to an entity, apply the updated component data
+        if (isConnected && connectedEntity != 0) {
+            Scene* scene = m_activeScene->getScene().get();
+            if (scene) {
+                printf("DEBUG: Node component data changed, updating entity %d\n", connectedEntity);
+                applyComponentToEntity(connectedEntity, scene, node);
+            }
+        }
     }
 
 } // namespace NodeEditor

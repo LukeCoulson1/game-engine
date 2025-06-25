@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <functional>
 #include "../components/Components.h"
 #include "../scene/Scene.h"
 
@@ -66,11 +67,15 @@ namespace NodeEditor {
         ImVec2 maxSize = ImVec2(400, 300);
         
         // Component-specific data
-        std::shared_ptr<Component> componentData;        Node(int nodeId, NodeType nodeType, const std::string& nodeName, ImVec2 pos);
+        std::shared_ptr<Component> componentData;
+        
+        // Callback for when component data changes
+        std::function<void(Node*)> onComponentDataChanged;        Node(int nodeId, NodeType nodeType, const std::string& nodeName, ImVec2 pos);
         void draw(ImVec2 displayPos = ImVec2(0, 0), float zoom = 1.0f);
         void drawSpriteNodeContent(ImVec2 nodePos, ImVec2 nodeSize);
         void drawRotationNodeContent(ImVec2 nodePos, ImVec2 nodeSize);
         void drawScaleNodeContent(ImVec2 nodePos, ImVec2 nodeSize);
+        void drawTransformNodeContent(ImVec2 nodePos, ImVec2 nodeSize);
         void drawTextureSelectionPopup();
         void drawPins(ImDrawList* drawList, float zoom = 1.0f);
         bool isInside(ImVec2 point) const;
@@ -158,6 +163,7 @@ namespace NodeEditor {
         void handleInput();
         void drawNodeCreationMenu();
         void drawConnectionInProgress();
+        void drawTransformEditPopup(Node* node);
         
         std::string getNodeTypeName(NodeType type);
         ImU32 getNodeColor(NodeType type);
@@ -173,6 +179,8 @@ namespace NodeEditor {
         // Component management helpers
         void applyComponentToEntity(EntityID entity, Scene* scene, Node* componentNode);
         void removeComponentFromEntity(EntityID entity, Scene* scene, NodeType componentType);
+        void applyTransformChangesIfConnected(Node* transformNode);
+        void onNodeComponentDataChanged(Node* node);
     };
 
 } // namespace NodeEditor
