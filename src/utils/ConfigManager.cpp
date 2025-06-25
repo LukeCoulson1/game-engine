@@ -168,6 +168,36 @@ std::string ConfigManager::getAssetFolder() const {
     return getString("assets.folder", "assets");
 }
 
+void ConfigManager::setSceneWindowSize(int width, int height) {
+    m_intValues["scene_window.width"] = width;
+    m_intValues["scene_window.height"] = height;
+}
+
+void ConfigManager::getSceneWindowSize(int& width, int& height) const {
+    width = getInt("scene_window.width", 800);   // Default width: 800
+    height = getInt("scene_window.height", 600); // Default height: 600
+}
+
+// Per-scene window size methods
+void ConfigManager::setSceneWindowSize(const std::string& sceneName, int width, int height) {
+    std::string widthKey = "scene_window." + sceneName + ".width";
+    std::string heightKey = "scene_window." + sceneName + ".height";
+    m_intValues[widthKey] = width;
+    m_intValues[heightKey] = height;
+}
+
+void ConfigManager::getSceneWindowSize(const std::string& sceneName, int& width, int& height) const {
+    std::string widthKey = "scene_window." + sceneName + ".width";
+    std::string heightKey = "scene_window." + sceneName + ".height";
+    width = getInt(widthKey, 800);   // Default width: 800
+    height = getInt(heightKey, 600); // Default height: 600
+}
+
+bool ConfigManager::hasSceneWindowSize(const std::string& sceneName) const {
+    std::string widthKey = "scene_window." + sceneName + ".width";
+    return m_intValues.find(widthKey) != m_intValues.end();
+}
+
 void ConfigManager::setInt(const std::string& key, int value) {
     m_intValues[key] = value;
 }

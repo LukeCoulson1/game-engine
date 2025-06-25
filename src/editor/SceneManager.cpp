@@ -3,6 +3,8 @@
 #include "../scene/Scene.h"
 #include "../components/Components.h"
 #include "../generation/ProceduralGeneration.h"
+#include "../core/Engine.h"
+#include "../utils/ResourceManager.h"
 #include <imgui.h>
 #include <iostream>
 #include <fstream>
@@ -522,6 +524,23 @@ void SceneManager::saveScene(SceneInfo& sceneInfo) {
     }
     
     std::cout << "Saving scene: " << sceneInfo.name << " to " << sceneInfo.filepath << std::endl;
+    
+    // Count entities and components for user feedback
+    auto entities = sceneInfo.scene->getAllLivingEntities();
+    int componentCount = 0;
+    for (EntityID entity : entities) {
+        if (sceneInfo.scene->hasComponent<Transform>(entity)) componentCount++;
+        if (sceneInfo.scene->hasComponent<Sprite>(entity)) componentCount++;
+        if (sceneInfo.scene->hasComponent<Collider>(entity)) componentCount++;
+        if (sceneInfo.scene->hasComponent<RigidBody>(entity)) componentCount++;
+        if (sceneInfo.scene->hasComponent<PlayerController>(entity)) componentCount++;
+        if (sceneInfo.scene->hasComponent<PlayerStats>(entity)) componentCount++;
+        if (sceneInfo.scene->hasComponent<PlayerPhysics>(entity)) componentCount++;
+        if (sceneInfo.scene->hasComponent<PlayerInventory>(entity)) componentCount++;
+        if (sceneInfo.scene->hasComponent<PlayerAbilities>(entity)) componentCount++;
+        if (sceneInfo.scene->hasComponent<PlayerState>(entity)) componentCount++;
+    }
+    std::cout << "Saving " << entities.size() << " entities with " << componentCount << " total components" << std::endl;
       try {
         // Create JSON object from scene
         std::string jsonData;
@@ -761,6 +780,9 @@ bool SceneManager::loadSceneFromJson(std::shared_ptr<Scene> scene, const std::st
             // Could load scene name, version, etc. here
         }
         
+        int entitiesLoaded = 0;
+        int componentsLoaded = 0;
+        
         // Load entities
         if (sceneJsonData.contains("entities")) {
             auto entities = sceneJsonData["entities"];
@@ -774,6 +796,8 @@ bool SceneManager::loadSceneFromJson(std::shared_ptr<Scene> scene, const std::st
                 if (entityData.contains("name")) {
                     scene->setEntityName(entityId, entityData["name"]);
                 }
+                
+                entitiesLoaded++;
                 
                 // Load components
                 if (entityData.contains("components")) {
@@ -789,18 +813,307 @@ bool SceneManager::loadSceneFromJson(std::shared_ptr<Scene> scene, const std::st
                         if (transformData.contains("scaleX")) transform.scale.x = transformData["scaleX"];
                         if (transformData.contains("scaleY")) transform.scale.y = transformData["scaleY"];
                         scene->addComponent<Transform>(entityId, transform);
+                        componentsLoaded++;
+                        componentsLoaded++;
                     }
-                    
-                    // Load Sprite component
+                      // Load Sprite component
                     if (components.contains("Sprite")) {
                         auto spriteData = components["Sprite"];
                         Sprite sprite;
-                        // For now, just create empty sprite - would need to load texture path
+                        if (spriteData.contains("visible")) sprite.visible = spriteData["visible"];
+                        if (spriteData.contains("layer")) sprite.layer = spriteData["layer"];
+                        if (spriteData.contains("tintR")) sprite.tint.r = spriteData["tintR"];
+                        if (spriteData.contains("tintG")) sprite.tint.g = spriteData["tintG"];
+                        if (spriteData.contains("tintB")) sprite.tint.b = spriteData["tintB"];
+                        if (spriteData.contains("tintA")) sprite.tint.a = spriteData["tintA"];
+                        
+                        if (spriteData.contains("sourceRectX") && spriteData.contains("sourceRectY") &&
+                            spriteData.contains("sourceRectW") && spriteData.contains("sourceRectH")) {
+                            sprite.sourceRect = Rect(spriteData["sourceRectX"], spriteData["sourceRectY"],
+                                                   spriteData["sourceRectW"], spriteData["sourceRectH"]);
+                        }
+                        
+                        // Load texture from saved path
+                        if (spriteData.contains("texturePath")) {
+                            std::string texturePath = spriteData["texturePath"];
+                            if (!texturePath.empty()) {
+                                auto& engine = Engine::getInstance();
+                                auto resourceManager = engine.getResourceManager();
+                                if (resourceManager) {
+                                    auto texture = resourceManager->loadTexture(texturePath);
+                                    if (texture) {
+                                        sprite.texture = texture;
+                                        std::cout << "Restored texture: " << texturePath << " for entity " << entityId << std::endl;
+                                    } else {
+                                        std::cerr << "Failed to load texture: " << texturePath << " for entity " << entityId << std::endl;
+                                    }
+                                }
+                            }
+                        }
+                        
                         scene->addComponent<Sprite>(entityId, sprite);
+                        componentsLoaded++;
                     }
                     
-                    // Could add other components here (Rigidbody, Collider, etc.)
-                }            }
+                    // Load Collider component
+                    if (components.contains("Collider")) {
+                        auto colliderData = components["Collider"];
+                        Collider collider;
+                        if (colliderData.contains("offsetX")) collider.offset.x = colliderData["offsetX"];
+                        if (colliderData.contains("offsetY")) collider.offset.y = colliderData["offsetY"];
+                        if (colliderData.contains("sizeX")) collider.size.x = colliderData["sizeX"];
+                        if (colliderData.contains("sizeY")) collider.size.y = colliderData["sizeY"];
+                        if (colliderData.contains("isTrigger")) collider.isTrigger = colliderData["isTrigger"];
+                        if (colliderData.contains("isStatic")) collider.isStatic = colliderData["isStatic"];
+                        scene->addComponent<Collider>(entityId, collider);
+                        componentsLoaded++;
+                    }
+                    
+                    // Load RigidBody component
+                    if (components.contains("RigidBody")) {
+                        auto rigidBodyData = components["RigidBody"];
+                        RigidBody rigidBody;
+                        if (rigidBodyData.contains("velocityX")) rigidBody.velocity.x = rigidBodyData["velocityX"];
+                        if (rigidBodyData.contains("velocityY")) rigidBody.velocity.y = rigidBodyData["velocityY"];
+                        if (rigidBodyData.contains("accelerationX")) rigidBody.acceleration.x = rigidBodyData["accelerationX"];
+                        if (rigidBodyData.contains("accelerationY")) rigidBody.acceleration.y = rigidBodyData["accelerationY"];
+                        if (rigidBodyData.contains("drag")) rigidBody.drag = rigidBodyData["drag"];
+                        if (rigidBodyData.contains("mass")) rigidBody.mass = rigidBodyData["mass"];
+                        if (rigidBodyData.contains("useGravity")) rigidBody.useGravity = rigidBodyData["useGravity"];
+                        scene->addComponent<RigidBody>(entityId, rigidBody);
+                        componentsLoaded++;
+                    }
+                    
+                    // Load PlayerController component
+                    if (components.contains("PlayerController")) {
+                        auto controllerData = components["PlayerController"];
+                        PlayerController controller;
+                        if (controllerData.contains("controlScheme")) 
+                            controller.controlScheme = static_cast<PlayerController::ControlScheme>(controllerData["controlScheme"]);
+                        if (controllerData.contains("movementType")) 
+                            controller.movementType = static_cast<PlayerController::MovementType>(controllerData["movementType"]);
+                        if (controllerData.contains("moveSpeed")) controller.moveSpeed = controllerData["moveSpeed"];
+                        if (controllerData.contains("runSpeedMultiplier")) controller.runSpeedMultiplier = controllerData["runSpeedMultiplier"];
+                        if (controllerData.contains("acceleration")) controller.acceleration = controllerData["acceleration"];
+                        if (controllerData.contains("deceleration")) controller.deceleration = controllerData["deceleration"];
+                        if (controllerData.contains("jumpForce")) controller.jumpForce = controllerData["jumpForce"];
+                        if (controllerData.contains("canDoubleJump")) controller.canDoubleJump = controllerData["canDoubleJump"];
+                        if (controllerData.contains("maxJumps")) controller.maxJumps = controllerData["maxJumps"];
+                        if (controllerData.contains("jumpsRemaining")) controller.jumpsRemaining = controllerData["jumpsRemaining"];
+                        if (controllerData.contains("inputDirectionX")) controller.inputDirection.x = controllerData["inputDirectionX"];
+                        if (controllerData.contains("inputDirectionY")) controller.inputDirection.y = controllerData["inputDirectionY"];
+                        if (controllerData.contains("moveDirectionX")) controller.moveDirection.x = controllerData["moveDirectionX"];
+                        if (controllerData.contains("moveDirectionY")) controller.moveDirection.y = controllerData["moveDirectionY"];
+                        if (controllerData.contains("isRunning")) controller.isRunning = controllerData["isRunning"];
+                        if (controllerData.contains("isGrounded")) controller.isGrounded = controllerData["isGrounded"];
+                        if (controllerData.contains("jumpPressed")) controller.jumpPressed = controllerData["jumpPressed"];
+                        if (controllerData.contains("jumpHeld")) controller.jumpHeld = controllerData["jumpHeld"];
+                        scene->addComponent<PlayerController>(entityId, controller);
+                        componentsLoaded++;
+                    }
+                    
+                    // Load PlayerStats component
+                    if (components.contains("PlayerStats")) {
+                        auto statsData = components["PlayerStats"];
+                        PlayerStats stats;
+                        
+                        if (statsData.contains("core")) {
+                            auto coreData = statsData["core"];
+                            if (coreData.contains("level")) stats.core.level = coreData["level"];
+                            if (coreData.contains("experience")) stats.core.experience = coreData["experience"];
+                            if (coreData.contains("experienceToNext")) stats.core.experienceToNext = coreData["experienceToNext"];
+                            if (coreData.contains("strength")) stats.core.strength = coreData["strength"];
+                            if (coreData.contains("dexterity")) stats.core.dexterity = coreData["dexterity"];
+                            if (coreData.contains("intelligence")) stats.core.intelligence = coreData["intelligence"];
+                            if (coreData.contains("vitality")) stats.core.vitality = coreData["vitality"];
+                            if (coreData.contains("luck")) stats.core.luck = coreData["luck"];
+                        }
+                        
+                        if (statsData.contains("derived")) {
+                            auto derivedData = statsData["derived"];
+                            if (derivedData.contains("maxHealth")) stats.derived.maxHealth = derivedData["maxHealth"];
+                            if (derivedData.contains("currentHealth")) stats.derived.currentHealth = derivedData["currentHealth"];
+                            if (derivedData.contains("maxMana")) stats.derived.maxMana = derivedData["maxMana"];
+                            if (derivedData.contains("currentMana")) stats.derived.currentMana = derivedData["currentMana"];
+                            if (derivedData.contains("maxStamina")) stats.derived.maxStamina = derivedData["maxStamina"];
+                            if (derivedData.contains("currentStamina")) stats.derived.currentStamina = derivedData["currentStamina"];
+                            if (derivedData.contains("physicalDamage")) stats.derived.physicalDamage = derivedData["physicalDamage"];
+                            if (derivedData.contains("magicalDamage")) stats.derived.magicalDamage = derivedData["magicalDamage"];
+                            if (derivedData.contains("defense")) stats.derived.defense = derivedData["defense"];
+                            if (derivedData.contains("magicResistance")) stats.derived.magicResistance = derivedData["magicResistance"];
+                            if (derivedData.contains("criticalChance")) stats.derived.criticalChance = derivedData["criticalChance"];
+                            if (derivedData.contains("criticalMultiplier")) stats.derived.criticalMultiplier = derivedData["criticalMultiplier"];
+                            if (derivedData.contains("moveSpeedModifier")) stats.derived.moveSpeedModifier = derivedData["moveSpeedModifier"];
+                            if (derivedData.contains("attackSpeedModifier")) stats.derived.attackSpeedModifier = derivedData["attackSpeedModifier"];
+                        }
+                        
+                        if (statsData.contains("status")) {
+                            auto statusData = statsData["status"];
+                            if (statusData.contains("poisoned")) stats.status.poisoned = statusData["poisoned"];
+                            if (statusData.contains("burning")) stats.status.burning = statusData["burning"];
+                            if (statusData.contains("frozen")) stats.status.frozen = statusData["frozen"];
+                            if (statusData.contains("stunned")) stats.status.stunned = statusData["stunned"];
+                            if (statusData.contains("invulnerable")) stats.status.invulnerable = statusData["invulnerable"];
+                            if (statusData.contains("poisonDuration")) stats.status.poisonDuration = statusData["poisonDuration"];
+                            if (statusData.contains("burnDuration")) stats.status.burnDuration = statusData["burnDuration"];
+                            if (statusData.contains("freezeDuration")) stats.status.freezeDuration = statusData["freezeDuration"];
+                            if (statusData.contains("stunDuration")) stats.status.stunDuration = statusData["stunDuration"];
+                            if (statusData.contains("invulnerabilityDuration")) stats.status.invulnerabilityDuration = statusData["invulnerabilityDuration"];
+                        }
+                        
+                        scene->addComponent<PlayerStats>(entityId, stats);
+                        componentsLoaded++;
+                    }
+                    
+                    // Load PlayerPhysics component
+                    if (components.contains("PlayerPhysics")) {
+                        auto physicsData = components["PlayerPhysics"];
+                        PlayerPhysics physics;
+                        if (physicsData.contains("velocityX")) physics.velocity.x = physicsData["velocityX"];
+                        if (physicsData.contains("velocityY")) physics.velocity.y = physicsData["velocityY"];
+                        if (physicsData.contains("accelerationX")) physics.acceleration.x = physicsData["accelerationX"];
+                        if (physicsData.contains("accelerationY")) physics.acceleration.y = physicsData["accelerationY"];
+                        if (physicsData.contains("externalForcesX")) physics.externalForces.x = physicsData["externalForcesX"];
+                        if (physicsData.contains("externalForcesY")) physics.externalForces.y = physicsData["externalForcesY"];
+                        if (physicsData.contains("maxSpeed")) physics.maxSpeed = physicsData["maxSpeed"];
+                        if (physicsData.contains("friction")) physics.friction = physicsData["friction"];
+                        if (physicsData.contains("airResistance")) physics.airResistance = physicsData["airResistance"];
+                        if (physicsData.contains("mass")) physics.mass = physicsData["mass"];
+                        if (physicsData.contains("isGrounded")) physics.isGrounded = physicsData["isGrounded"];
+                        if (physicsData.contains("isOnSlope")) physics.isOnSlope = physicsData["isOnSlope"];
+                        if (physicsData.contains("slopeAngle")) physics.slopeAngle = physicsData["slopeAngle"];
+                        if (physicsData.contains("groundNormalX")) physics.groundNormal.x = physicsData["groundNormalX"];
+                        if (physicsData.contains("groundNormalY")) physics.groundNormal.y = physicsData["groundNormalY"];
+                        if (physicsData.contains("canJump")) physics.canJump = physicsData["canJump"];
+                        if (physicsData.contains("jumpCooldown")) physics.jumpCooldown = physicsData["jumpCooldown"];
+                        if (physicsData.contains("coyoteTime")) physics.coyoteTime = physicsData["coyoteTime"];
+                        if (physicsData.contains("jumpBufferTime")) physics.jumpBufferTime = physicsData["jumpBufferTime"];
+                        if (physicsData.contains("coyoteTimer")) physics.coyoteTimer = physicsData["coyoteTimer"];
+                        if (physicsData.contains("jumpBufferTimer")) physics.jumpBufferTimer = physicsData["jumpBufferTimer"];
+                        if (physicsData.contains("canWallJump")) physics.canWallJump = physicsData["canWallJump"];
+                        if (physicsData.contains("isTouchingWall")) physics.isTouchingWall = physicsData["isTouchingWall"];
+                        if (physicsData.contains("wallNormalX")) physics.wallNormal.x = physicsData["wallNormalX"];
+                        if (physicsData.contains("wallNormalY")) physics.wallNormal.y = physicsData["wallNormalY"];
+                        if (physicsData.contains("canDash")) physics.canDash = physicsData["canDash"];
+                        if (physicsData.contains("isDashing")) physics.isDashing = physicsData["isDashing"];
+                        if (physicsData.contains("dashForce")) physics.dashForce = physicsData["dashForce"];
+                        if (physicsData.contains("dashDuration")) physics.dashDuration = physicsData["dashDuration"];
+                        if (physicsData.contains("dashCooldown")) physics.dashCooldown = physicsData["dashCooldown"];
+                        if (physicsData.contains("dashTimer")) physics.dashTimer = physicsData["dashTimer"];
+                        if (physicsData.contains("dashCooldownTimer")) physics.dashCooldownTimer = physicsData["dashCooldownTimer"];
+                        scene->addComponent<PlayerPhysics>(entityId, physics);
+                        componentsLoaded++;
+                    }
+                    
+                    // Load PlayerInventory component
+                    if (components.contains("PlayerInventory")) {
+                        auto inventoryData = components["PlayerInventory"];
+                        PlayerInventory inventory;
+                        if (inventoryData.contains("selectedHotbarSlot")) inventory.selectedHotbarSlot = inventoryData["selectedHotbarSlot"];
+                        if (inventoryData.contains("currency")) inventory.currency = inventoryData["currency"];
+                        
+                        // Load inventory items
+                        if (inventoryData.contains("items")) {
+                            for (const auto& itemData : inventoryData["items"]) {
+                                if (itemData.contains("slot")) {
+                                    int slot = itemData["slot"];
+                                    if (slot >= 0 && slot < PlayerInventory::MAX_INVENTORY_SLOTS) {
+                                        auto item = std::make_shared<PlayerInventory::Item>();
+                                        if (itemData.contains("id")) item->id = itemData["id"];
+                                        if (itemData.contains("name")) item->name = itemData["name"];
+                                        if (itemData.contains("description")) item->description = itemData["description"];
+                                        if (itemData.contains("quantity")) item->quantity = itemData["quantity"];
+                                        if (itemData.contains("maxStack")) item->maxStack = itemData["maxStack"];
+                                        if (itemData.contains("consumable")) item->consumable = itemData["consumable"];
+                                        if (itemData.contains("healthRestore")) item->healthRestore = itemData["healthRestore"];
+                                        if (itemData.contains("manaRestore")) item->manaRestore = itemData["manaRestore"];
+                                        if (itemData.contains("staminaRestore")) item->staminaRestore = itemData["staminaRestore"];
+                                        if (itemData.contains("damageBonus")) item->damageBonus = itemData["damageBonus"];
+                                        if (itemData.contains("defenseBonus")) item->defenseBonus = itemData["defenseBonus"];
+                                        inventory.items[slot] = item;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Load hotbar items
+                        if (inventoryData.contains("hotbar")) {
+                            for (const auto& itemData : inventoryData["hotbar"]) {
+                                if (itemData.contains("slot")) {
+                                    int slot = itemData["slot"];
+                                    if (slot >= 0 && slot < PlayerInventory::HOTBAR_SLOTS) {
+                                        auto item = std::make_shared<PlayerInventory::Item>();
+                                        if (itemData.contains("id")) item->id = itemData["id"];
+                                        if (itemData.contains("name")) item->name = itemData["name"];
+                                        if (itemData.contains("quantity")) item->quantity = itemData["quantity"];
+                                        inventory.hotbar[slot] = item;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        scene->addComponent<PlayerInventory>(entityId, inventory);
+                        componentsLoaded++;
+                    }
+                    
+                    // Load PlayerAbilities component
+                    if (components.contains("PlayerAbilities")) {
+                        auto abilitiesData = components["PlayerAbilities"];
+                        PlayerAbilities abilities;
+                        if (abilitiesData.contains("skillPoints")) abilities.skillPoints = abilitiesData["skillPoints"];
+                        
+                        // Load abilities
+                        if (abilitiesData.contains("abilities")) {
+                            for (const auto& abilityData : abilitiesData["abilities"]) {
+                                PlayerAbilities::Ability ability;
+                                if (abilityData.contains("name")) ability.name = abilityData["name"];
+                                if (abilityData.contains("description")) ability.description = abilityData["description"];
+                                if (abilityData.contains("level")) ability.level = abilityData["level"];
+                                if (abilityData.contains("maxLevel")) ability.maxLevel = abilityData["maxLevel"];
+                                if (abilityData.contains("cooldown")) ability.cooldown = abilityData["cooldown"];
+                                if (abilityData.contains("currentCooldown")) ability.currentCooldown = abilityData["currentCooldown"];
+                                if (abilityData.contains("manaCost")) ability.manaCost = abilityData["manaCost"];
+                                if (abilityData.contains("staminaCost")) ability.staminaCost = abilityData["staminaCost"];
+                                if (abilityData.contains("unlocked")) ability.unlocked = abilityData["unlocked"];
+                                if (abilityData.contains("passive")) ability.passive = abilityData["passive"];
+                                if (abilityData.contains("damage")) ability.damage = abilityData["damage"];
+                                if (abilityData.contains("range")) ability.range = abilityData["range"];
+                                if (abilityData.contains("duration")) ability.duration = abilityData["duration"];
+                                abilities.abilities.push_back(ability);
+                            }
+                        }
+                        
+                        // Load hotbar abilities
+                        if (abilitiesData.contains("hotbarAbilities")) {
+                            auto hotbarArray = abilitiesData["hotbarAbilities"];
+                            for (int i = 0; i < 4 && i < hotbarArray.size(); ++i) {
+                                abilities.hotbarAbilities[i] = hotbarArray[i];
+                            }
+                        }
+                        
+                        scene->addComponent<PlayerAbilities>(entityId, abilities);
+                        componentsLoaded++;
+                    }
+                    
+                    // Load PlayerState component
+                    if (components.contains("PlayerState")) {
+                        auto stateData = components["PlayerState"];
+                        PlayerState state;
+                        if (stateData.contains("currentState")) 
+                            state.currentState = static_cast<PlayerState::State>(stateData["currentState"]);
+                        if (stateData.contains("previousState")) 
+                            state.previousState = static_cast<PlayerState::State>(stateData["previousState"]);
+                        if (stateData.contains("stateTimer")) state.stateTimer = stateData["stateTimer"];
+                        if (stateData.contains("currentFrame")) state.currentFrame = stateData["currentFrame"];
+                        if (stateData.contains("frameTimer")) state.frameTimer = stateData["frameTimer"];
+                        if (stateData.contains("frameRate")) state.frameRate = stateData["frameRate"];
+                        if (stateData.contains("facingX")) state.facing.x = stateData["facingX"];
+                        if (stateData.contains("facingY")) state.facing.y = stateData["facingY"];
+                        if (stateData.contains("actionInProgress")) state.actionInProgress = stateData["actionInProgress"];
+                        if (stateData.contains("actionDuration")) state.actionDuration = stateData["actionDuration"];                        scene->addComponent<PlayerState>(entityId, state);
+                    }
+                }
+            }
         }
         
         // Load procedural map data if present
@@ -845,13 +1158,14 @@ bool SceneManager::loadSceneFromJson(std::shared_ptr<Scene> scene, const std::st
                     proceduralMap->setSpriteManager(spriteManager);
                 }
                 
-                // Set the procedural map on the scene
-                scene->setProceduralMap(proceduralMap);
+                // Set the procedural map on the scene                scene->setProceduralMap(proceduralMap);
                 
                 std::cout << "Loaded procedural map: " << width << "x" << height 
                          << " with " << mapData["tiles"].size() << " tiles" << std::endl;
             }
         }
+        
+        std::cout << "Successfully loaded " << entitiesLoaded << " entities with their components from scene" << std::endl;
         
         return true;
     } catch (const std::exception& e) {
@@ -885,8 +1199,7 @@ bool SceneManager::saveSceneToJson(std::shared_ptr<Scene> scene, std::string& js
             if (!entityName.empty()) {
                 entityData["name"] = entityName;
             }
-            
-            // Save components
+              // Save components
             json componentsData;
             
             // Save Transform component
@@ -900,17 +1213,269 @@ bool SceneManager::saveSceneToJson(std::shared_ptr<Scene> scene, std::string& js
                     {"scaleY", transform.scale.y}
                 };
             }
-            
-            // Save Sprite component
+              // Save Sprite component
             if (scene->hasComponent<Sprite>(entityId)) {
-                // For now, just mark that sprite exists
-                // Would need to save texture path and other sprite data
-                componentsData["Sprite"] = {
-                    {"hasSprite", true}
+                const Sprite& sprite = scene->getComponent<Sprite>(entityId);
+                json spriteData = {
+                    {"visible", sprite.visible},
+                    {"layer", sprite.layer},
+                    {"tintR", sprite.tint.r},
+                    {"tintG", sprite.tint.g},
+                    {"tintB", sprite.tint.b},
+                    {"tintA", sprite.tint.a},
+                    {"sourceRectX", sprite.sourceRect.x},
+                    {"sourceRectY", sprite.sourceRect.y},
+                    {"sourceRectW", sprite.sourceRect.width},
+                    {"sourceRectH", sprite.sourceRect.height}
+                };
+                
+                // Save texture filepath if available
+                if (sprite.texture && !sprite.texture->getFilePath().empty()) {
+                    spriteData["texturePath"] = sprite.texture->getFilePath();
+                }
+                
+                componentsData["Sprite"] = spriteData;
+            }
+            
+            // Save Collider component
+            if (scene->hasComponent<Collider>(entityId)) {
+                const Collider& collider = scene->getComponent<Collider>(entityId);
+                componentsData["Collider"] = {
+                    {"offsetX", collider.offset.x},
+                    {"offsetY", collider.offset.y},
+                    {"sizeX", collider.size.x},
+                    {"sizeY", collider.size.y},
+                    {"isTrigger", collider.isTrigger},
+                    {"isStatic", collider.isStatic}
                 };
             }
             
-            // Could add other components here
+            // Save RigidBody component
+            if (scene->hasComponent<RigidBody>(entityId)) {
+                const RigidBody& rigidBody = scene->getComponent<RigidBody>(entityId);
+                componentsData["RigidBody"] = {
+                    {"velocityX", rigidBody.velocity.x},
+                    {"velocityY", rigidBody.velocity.y},
+                    {"accelerationX", rigidBody.acceleration.x},
+                    {"accelerationY", rigidBody.acceleration.y},
+                    {"drag", rigidBody.drag},
+                    {"mass", rigidBody.mass},
+                    {"useGravity", rigidBody.useGravity}
+                };
+            }
+            
+            // Save PlayerController component
+            if (scene->hasComponent<PlayerController>(entityId)) {
+                const PlayerController& controller = scene->getComponent<PlayerController>(entityId);
+                componentsData["PlayerController"] = {
+                    {"controlScheme", static_cast<int>(controller.controlScheme)},
+                    {"movementType", static_cast<int>(controller.movementType)},
+                    {"moveSpeed", controller.moveSpeed},
+                    {"runSpeedMultiplier", controller.runSpeedMultiplier},
+                    {"acceleration", controller.acceleration},
+                    {"deceleration", controller.deceleration},
+                    {"jumpForce", controller.jumpForce},
+                    {"canDoubleJump", controller.canDoubleJump},
+                    {"maxJumps", controller.maxJumps},
+                    {"jumpsRemaining", controller.jumpsRemaining},
+                    {"inputDirectionX", controller.inputDirection.x},
+                    {"inputDirectionY", controller.inputDirection.y},
+                    {"moveDirectionX", controller.moveDirection.x},
+                    {"moveDirectionY", controller.moveDirection.y},
+                    {"isRunning", controller.isRunning},
+                    {"isGrounded", controller.isGrounded},
+                    {"jumpPressed", controller.jumpPressed},
+                    {"jumpHeld", controller.jumpHeld}
+                };
+            }
+            
+            // Save PlayerStats component
+            if (scene->hasComponent<PlayerStats>(entityId)) {
+                const PlayerStats& stats = scene->getComponent<PlayerStats>(entityId);
+                componentsData["PlayerStats"] = {
+                    {"core", {
+                        {"level", stats.core.level},
+                        {"experience", stats.core.experience},
+                        {"experienceToNext", stats.core.experienceToNext},
+                        {"strength", stats.core.strength},
+                        {"dexterity", stats.core.dexterity},
+                        {"intelligence", stats.core.intelligence},
+                        {"vitality", stats.core.vitality},
+                        {"luck", stats.core.luck}
+                    }},
+                    {"derived", {
+                        {"maxHealth", stats.derived.maxHealth},
+                        {"currentHealth", stats.derived.currentHealth},
+                        {"maxMana", stats.derived.maxMana},
+                        {"currentMana", stats.derived.currentMana},
+                        {"maxStamina", stats.derived.maxStamina},
+                        {"currentStamina", stats.derived.currentStamina},
+                        {"physicalDamage", stats.derived.physicalDamage},
+                        {"magicalDamage", stats.derived.magicalDamage},
+                        {"defense", stats.derived.defense},
+                        {"magicResistance", stats.derived.magicResistance},
+                        {"criticalChance", stats.derived.criticalChance},
+                        {"criticalMultiplier", stats.derived.criticalMultiplier},
+                        {"moveSpeedModifier", stats.derived.moveSpeedModifier},
+                        {"attackSpeedModifier", stats.derived.attackSpeedModifier}
+                    }},
+                    {"status", {
+                        {"poisoned", stats.status.poisoned},
+                        {"burning", stats.status.burning},
+                        {"frozen", stats.status.frozen},
+                        {"stunned", stats.status.stunned},
+                        {"invulnerable", stats.status.invulnerable},
+                        {"poisonDuration", stats.status.poisonDuration},
+                        {"burnDuration", stats.status.burnDuration},
+                        {"freezeDuration", stats.status.freezeDuration},
+                        {"stunDuration", stats.status.stunDuration},
+                        {"invulnerabilityDuration", stats.status.invulnerabilityDuration}
+                    }}
+                };
+            }
+            
+            // Save PlayerPhysics component
+            if (scene->hasComponent<PlayerPhysics>(entityId)) {
+                const PlayerPhysics& physics = scene->getComponent<PlayerPhysics>(entityId);
+                componentsData["PlayerPhysics"] = {
+                    {"velocityX", physics.velocity.x},
+                    {"velocityY", physics.velocity.y},
+                    {"accelerationX", physics.acceleration.x},
+                    {"accelerationY", physics.acceleration.y},
+                    {"externalForcesX", physics.externalForces.x},
+                    {"externalForcesY", physics.externalForces.y},
+                    {"maxSpeed", physics.maxSpeed},
+                    {"friction", physics.friction},
+                    {"airResistance", physics.airResistance},
+                    {"mass", physics.mass},
+                    {"isGrounded", physics.isGrounded},
+                    {"isOnSlope", physics.isOnSlope},
+                    {"slopeAngle", physics.slopeAngle},
+                    {"groundNormalX", physics.groundNormal.x},
+                    {"groundNormalY", physics.groundNormal.y},
+                    {"canJump", physics.canJump},
+                    {"jumpCooldown", physics.jumpCooldown},
+                    {"coyoteTime", physics.coyoteTime},
+                    {"jumpBufferTime", physics.jumpBufferTime},
+                    {"coyoteTimer", physics.coyoteTimer},
+                    {"jumpBufferTimer", physics.jumpBufferTimer},
+                    {"canWallJump", physics.canWallJump},
+                    {"isTouchingWall", physics.isTouchingWall},
+                    {"wallNormalX", physics.wallNormal.x},
+                    {"wallNormalY", physics.wallNormal.y},
+                    {"canDash", physics.canDash},
+                    {"isDashing", physics.isDashing},
+                    {"dashForce", physics.dashForce},
+                    {"dashDuration", physics.dashDuration},
+                    {"dashCooldown", physics.dashCooldown},
+                    {"dashTimer", physics.dashTimer},
+                    {"dashCooldownTimer", physics.dashCooldownTimer}
+                };
+            }
+            
+            // Save PlayerInventory component
+            if (scene->hasComponent<PlayerInventory>(entityId)) {
+                const PlayerInventory& inventory = scene->getComponent<PlayerInventory>(entityId);
+                json inventoryData = {
+                    {"selectedHotbarSlot", inventory.selectedHotbarSlot},
+                    {"currency", inventory.currency}
+                };
+                
+                // Save inventory items
+                json itemsArray = json::array();
+                for (int i = 0; i < PlayerInventory::MAX_INVENTORY_SLOTS; ++i) {
+                    if (inventory.items[i]) {
+                        auto item = inventory.items[i];
+                        itemsArray.push_back({
+                            {"slot", i},
+                            {"id", item->id},
+                            {"name", item->name},
+                            {"description", item->description},
+                            {"quantity", item->quantity},
+                            {"maxStack", item->maxStack},
+                            {"consumable", item->consumable},
+                            {"healthRestore", item->healthRestore},
+                            {"manaRestore", item->manaRestore},
+                            {"staminaRestore", item->staminaRestore},
+                            {"damageBonus", item->damageBonus},
+                            {"defenseBonus", item->defenseBonus}
+                        });
+                    }
+                }
+                inventoryData["items"] = itemsArray;
+                
+                // Save hotbar items
+                json hotbarArray = json::array();
+                for (int i = 0; i < PlayerInventory::HOTBAR_SLOTS; ++i) {
+                    if (inventory.hotbar[i]) {
+                        auto item = inventory.hotbar[i];
+                        hotbarArray.push_back({
+                            {"slot", i},
+                            {"id", item->id},
+                            {"name", item->name},
+                            {"quantity", item->quantity}
+                        });
+                    }
+                }
+                inventoryData["hotbar"] = hotbarArray;
+                
+                componentsData["PlayerInventory"] = inventoryData;
+            }
+            
+            // Save PlayerAbilities component
+            if (scene->hasComponent<PlayerAbilities>(entityId)) {
+                const PlayerAbilities& abilities = scene->getComponent<PlayerAbilities>(entityId);
+                json abilitiesData = {
+                    {"skillPoints", abilities.skillPoints}
+                };
+                
+                // Save abilities
+                json abilitiesArray = json::array();
+                for (const auto& ability : abilities.abilities) {
+                    abilitiesArray.push_back({
+                        {"name", ability.name},
+                        {"description", ability.description},
+                        {"level", ability.level},
+                        {"maxLevel", ability.maxLevel},
+                        {"cooldown", ability.cooldown},
+                        {"currentCooldown", ability.currentCooldown},
+                        {"manaCost", ability.manaCost},
+                        {"staminaCost", ability.staminaCost},
+                        {"unlocked", ability.unlocked},
+                        {"passive", ability.passive},
+                        {"damage", ability.damage},
+                        {"range", ability.range},
+                        {"duration", ability.duration}
+                    });
+                }
+                abilitiesData["abilities"] = abilitiesArray;
+                
+                // Save hotbar abilities
+                json hotbarAbilitiesArray = json::array();
+                for (int i = 0; i < 4; ++i) {
+                    hotbarAbilitiesArray.push_back(abilities.hotbarAbilities[i]);
+                }
+                abilitiesData["hotbarAbilities"] = hotbarAbilitiesArray;
+                
+                componentsData["PlayerAbilities"] = abilitiesData;
+            }
+            
+            // Save PlayerState component
+            if (scene->hasComponent<PlayerState>(entityId)) {
+                const PlayerState& state = scene->getComponent<PlayerState>(entityId);
+                componentsData["PlayerState"] = {
+                    {"currentState", static_cast<int>(state.currentState)},
+                    {"previousState", static_cast<int>(state.previousState)},
+                    {"stateTimer", state.stateTimer},
+                    {"currentFrame", state.currentFrame},
+                    {"frameTimer", state.frameTimer},
+                    {"frameRate", state.frameRate},
+                    {"facingX", state.facing.x},
+                    {"facingY", state.facing.y},
+                    {"actionInProgress", state.actionInProgress},
+                    {"actionDuration", state.actionDuration}
+                };
+            }
             
             if (!componentsData.empty()) {
                 entityData["components"] = componentsData;

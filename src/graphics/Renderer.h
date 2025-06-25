@@ -34,16 +34,18 @@ struct Rect {
 
 class Texture {
 public:
-    Texture(SDL_Texture* texture, int width, int height);
+    Texture(SDL_Texture* texture, int width, int height, const std::string& filepath = "");
     ~Texture();
     
     SDL_Texture* getSDLTexture() const { return m_texture; }
     int getWidth() const { return m_width; }
     int getHeight() const { return m_height; }
+    const std::string& getFilePath() const { return m_filepath; }
 
 private:
     SDL_Texture* m_texture;
     int m_width, m_height;
+    std::string m_filepath; // Store the original file path for serialization
 };
 
 class Renderer {

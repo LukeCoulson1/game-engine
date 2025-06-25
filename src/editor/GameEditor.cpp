@@ -390,12 +390,12 @@ void GameEditor::showSceneHierarchy() {
         // Auto-focus the input field when dialog opens
         if (ImGui::IsWindowAppearing()) {
             ImGui::SetKeyboardFocusHere();
-        }
-          if (ImGui::InputText("##rename", m_renameBuffer.data(), m_renameBuffer.capacity(), ImGuiInputTextFlags_EnterReturnsTrue)) {
+        }        if (ImGui::InputText("##rename", m_renameBuffer.data(), m_renameBuffer.capacity(), ImGuiInputTextFlags_EnterReturnsTrue)) {
             // Enter pressed - confirm rename
             if (m_activeSceneWindow && m_activeSceneWindow->getScene() && !m_renameBuffer.empty()) {
                 std::string newName(m_renameBuffer.c_str());
                 auto scene = m_activeSceneWindow->getScene();
+                std::cout << "DEBUG: Renaming entity " << m_renamingEntity << " to '" << newName << "' (Enter key)" << std::endl;
                 scene->setEntityName(m_renamingEntity, newName);
                 m_activeSceneWindow->setDirty(true);
                 m_consoleMessages.push_back("Renamed entity to: " + newName + " in " + m_activeSceneWindow->getTitle());
@@ -404,11 +404,11 @@ void GameEditor::showSceneHierarchy() {
         }
         
         ImGui::Separator();
-        
-        if (ImGui::Button("Rename", ImVec2(80, 0))) {
+          if (ImGui::Button("Rename", ImVec2(80, 0))) {
             if (m_activeSceneWindow && m_activeSceneWindow->getScene() && !m_renameBuffer.empty()) {
                 std::string newName(m_renameBuffer.c_str());
                 auto scene = m_activeSceneWindow->getScene();
+                std::cout << "DEBUG: Renaming entity " << m_renamingEntity << " to '" << newName << "' (Button)" << std::endl;
                 scene->setEntityName(m_renamingEntity, newName);
                 m_activeSceneWindow->setDirty(true);
                 m_consoleMessages.push_back("Renamed entity to: " + newName + " in " + m_activeSceneWindow->getTitle());

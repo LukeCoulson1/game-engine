@@ -3,8 +3,8 @@
 #include <iostream>
 
 // Texture Implementation
-Texture::Texture(SDL_Texture* texture, int width, int height)
-    : m_texture(texture), m_width(width), m_height(height) {
+Texture::Texture(SDL_Texture* texture, int width, int height, const std::string& filepath)
+    : m_texture(texture), m_width(width), m_height(height), m_filepath(filepath) {
 }
 
 Texture::~Texture() {
@@ -180,12 +180,11 @@ std::shared_ptr<Texture> Renderer::loadTexture(const std::string& filepath) {
         SDL_FreeSurface(surface);
         return nullptr;
     }
-    
-    int width = surface->w;
+      int width = surface->w;
     int height = surface->h;
     SDL_FreeSurface(surface);
     
-    return std::make_shared<Texture>(texture, width, height);
+    return std::make_shared<Texture>(texture, width, height, filepath);
 }
 
 std::shared_ptr<Texture> Renderer::createTexture(int width, int height) {
@@ -196,7 +195,7 @@ std::shared_ptr<Texture> Renderer::createTexture(int width, int height) {
         return nullptr;
     }
     
-    return std::make_shared<Texture>(texture, width, height);
+    return std::make_shared<Texture>(texture, width, height, ""); // No filepath for programmatically created textures
 }
 
 Vector2 Renderer::screenToWorld(const Vector2& screenPos) const {

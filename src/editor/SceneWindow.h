@@ -28,7 +28,12 @@ public:
     // Window properties
     const std::string& getTitle() const { return m_title; }
     void setTitle(const std::string& title) { m_title = title; }
-      // Selection state
+    
+    // Window size management
+    void saveWindowSize();
+    void restoreWindowSize();
+    
+    // Selection state
     EntityID getSelectedEntity() const { return m_selectedEntity; }
     void setSelectedEntity(EntityID entity);
     bool hasSelectedEntity() const { return m_selectedEntity != 0; }
@@ -89,6 +94,9 @@ private:
     
     std::string m_filePath;
     bool m_isDirty = false;
+    
+    // Window size tracking for persistence
+    ImVec2 m_lastWindowSize{800, 600};
     
     // Unique identifier for this window
     static int s_windowCounter;

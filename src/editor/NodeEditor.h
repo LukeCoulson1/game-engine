@@ -53,9 +53,10 @@ namespace NodeEditor {
         EntityID associatedEntity = 0;
         
         // Component-specific data
-        std::shared_ptr<Component> componentData;
-          Node(int nodeId, NodeType nodeType, const std::string& nodeName, ImVec2 pos);
+        std::shared_ptr<Component> componentData;          Node(int nodeId, NodeType nodeType, const std::string& nodeName, ImVec2 pos);
         void draw(ImVec2 displayPos = ImVec2(0, 0));
+        void drawSpriteNodeContent(ImVec2 nodePos, ImVec2 nodeSize);
+        void drawTextureSelectionPopup();
         bool isInside(ImVec2 point) const;
         Pin* getPinById(int pinId);
     };

@@ -28,6 +28,15 @@ public:
     void setAssetFolder(const std::string& folder);
     std::string getAssetFolder() const;
     
+    // Scene window settings
+    void setSceneWindowSize(int width, int height);
+    void getSceneWindowSize(int& width, int& height) const;
+    
+    // Per-scene window settings
+    void setSceneWindowSize(const std::string& sceneName, int width, int height);
+    void getSceneWindowSize(const std::string& sceneName, int& width, int& height) const;
+    bool hasSceneWindowSize(const std::string& sceneName) const;
+    
     // Generic settings
     void setInt(const std::string& key, int value);
     int getInt(const std::string& key, int defaultValue = 0) const;

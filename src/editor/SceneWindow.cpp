@@ -5,6 +5,7 @@
 #include "../rendering/TileRenderer.h"
 #include "../generation/ProceduralGeneration.h"
 #include "../utils/ResourceManager.h"
+#include "../utils/ConfigManager.h"
 #include <imgui.h>
 #include <iostream>
 #include <sstream>
@@ -14,9 +15,12 @@
 int SceneWindow::s_windowCounter = 0;
 
 SceneWindow::SceneWindow(const std::string& title, std::shared_ptr<Scene> scene, GameEditor* editor)
-    : m_title(title), m_scene(scene), m_editor(editor), m_windowId(++s_windowCounter) {
+    : m_title(title), m_scene(scene), m_editor(editor), m_windowId(++s_windowCounter), m_lastWindowSize(800, 600) {
     // Initialize tile renderer for efficient procedural map rendering
     m_tileRenderer = std::make_unique<TileRenderer>();
+    
+    // Don't set any initial window size - let ImGui handle it naturally per scene
+    // ImGui will remember window state per window ID automatically
     
     // If the scene has a procedural map, restore it to this window
     if (scene && scene->hasProceduralMap()) {
@@ -54,18 +58,74 @@ void SceneWindow::setSelectedEntity(EntityID entity) {
     m_selectedEntity = entity;
 }
 
+void SceneWindow::saveWindowSize() {
+    ImVec2 windowSize = ImGui::GetWindowSize();
+    auto& config = ConfigManager::getInstance();
+    
+    // Save scene-specific window size
+    config.setSceneWindowSize(m_title, static_cast<int>(windowSize.x), static_cast<int>(windowSize.y));
+    
+    // Also save as global scene window size for new scenes
+    config.setSceneWindowSize(static_cast<int>(windowSize.x), static_cast<int>(windowSize.y));
+    
+    config.saveConfig(); // Save immediately to persist the setting
+    std::cout << "DEBUG: SceneWindow '" << m_title << "' saved scene-specific window size: " << windowSize.x << "x" << windowSize.y << std::endl;
+}
+
+void SceneWindow::restoreWindowSize() {
+    auto& config = ConfigManager::getInstance();
+    int width, height;
+    
+    // Try to get scene-specific window size first
+    if (config.hasSceneWindowSize(m_title)) {
+        config.getSceneWindowSize(m_title, width, height);
+        ImGui::SetNextWindowSize(ImVec2(static_cast<float>(width), static_cast<float>(height)), ImGuiCond_Always);
+        m_lastWindowSize = ImVec2(static_cast<float>(width), static_cast<float>(height));
+        std::cout << "DEBUG: SceneWindow '" << m_title << "' restored scene-specific size: " << width << "x" << height << std::endl;
+    } else {
+        // Fall back to global scene window size, then default
+        config.getSceneWindowSize(width, height);
+        if (width > 0 && height > 0) {
+            ImGui::SetNextWindowSize(ImVec2(static_cast<float>(width), static_cast<float>(height)), ImGuiCond_FirstUseEver);
+            m_lastWindowSize = ImVec2(static_cast<float>(width), static_cast<float>(height));
+            std::cout << "DEBUG: SceneWindow '" << m_title << "' using global size: " << width << "x" << height << std::endl;
+        } else {
+            // Use default size
+            ImGui::SetNextWindowSize(ImVec2(800, 600), ImGuiCond_FirstUseEver);
+            m_lastWindowSize = ImVec2(800, 600);
+            std::cout << "DEBUG: SceneWindow '" << m_title << "' using default size: 800x600" << std::endl;
+        }
+    }
+}
+
 void SceneWindow::render() {
     if (!m_isOpen) return;
     
     ImGuiWindowFlags windowFlags = ImGuiWindowFlags_MenuBar;
     
-    // Make window title show dirty state
+    // Create display title with dirty state
     std::string displayTitle = m_title;
     if (m_isDirty) {
         displayTitle += "*";
+    }    // Use only the scene name as the window ID for maximum stability
+    // Handle dirty indicator through window content instead of title
+    std::string windowID = m_title + "##Scene";
+    
+    // Debug: Log window ID to track any changes
+    static std::string lastWindowID;
+    if (windowID != lastWindowID) {
+        std::cout << "DEBUG: SceneWindow ID changed from '" << lastWindowID << "' to '" << windowID << "'" << std::endl;
+        lastWindowID = windowID;
     }
     
-    std::string windowID = displayTitle + "##SceneWindow" + std::to_string(m_windowId);      if (ImGui::Begin(windowID.c_str(), &m_isOpen, windowFlags)) {
+    if (ImGui::Begin(windowID.c_str(), &m_isOpen, windowFlags)) {
+        
+        // Show dirty indicator in the content area since we can't change the title
+        if (m_isDirty) {
+            ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "UNSAVED CHANGES");
+            ImGui::Separator();
+        }
+        
         // Update active scene window when this window is focused
         if (ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows)) {
             m_editor->setActiveSceneWindow(this);
@@ -169,10 +229,15 @@ void SceneWindow::render() {
         ImGui::SameLine();
         if (ImGui::SmallButton("-")) {
             setZoomLevel(m_zoomLevel - 0.1f);
-        }
-        
-        // Viewport rendering area
+        }        // Viewport rendering area
         renderViewport();
+        
+        // Save window size if it changed
+        ImVec2 currentWindowSize = ImGui::GetWindowSize();
+        if (currentWindowSize.x != m_lastWindowSize.x || currentWindowSize.y != m_lastWindowSize.y) {
+            saveWindowSize();
+            m_lastWindowSize = currentWindowSize;
+        }
     }
     ImGui::End();
 }
