@@ -41,12 +41,20 @@ void SceneWindow::setProceduralMap(std::shared_ptr<ProceduralMap> map) {
     m_proceduralMap = map;
     if (m_tileRenderer) {
         m_tileRenderer->setMap(map);
+        
+        // Force immediate rebuild of tile batches to ensure textures are loaded
+        if (map) {
+            m_tileRenderer->rebuildBatches();
+        }
     }
     
     // Also store the procedural map in the scene for persistence
     if (m_scene) {
         m_scene->setProceduralMap(map);
     }
+    
+    // Force a render update
+    setDirty(true);
 }
 
 std::string SceneWindow::getWindowID() const {
@@ -173,6 +181,14 @@ void SceneWindow::render() {
                     if (m_scene) {
                         EntityID newEntity = m_scene->createEntity();
                         m_scene->setEntityName(newEntity, "New Entity");
+                        
+                        // Add transform component with default position and grid-fitting scale
+                        Vector2 worldPos = m_cameraPosition; // Create at camera center
+                        m_scene->addComponent<Transform>(newEntity, Transform(worldPos));
+                        
+                        // Apply grid fitting (sets default scale for non-sprite entities)
+                        applyGridFittingToEntity(newEntity);
+                        
                         setSelectedEntity(newEntity);
                         setDirty(true);
                     }
@@ -313,14 +329,16 @@ void SceneWindow::renderSceneContent() {
                 if (sprite.texture && sprite.visible) {
                     // Draw actual texture image
                     SDL_Texture* sdlTexture = sprite.texture->getSDLTexture();
-                    ImTextureID textureID = (ImTextureID)(intptr_t)sdlTexture;                    // Use texture dimensions, applying transform scale and zoom
-                    float baseSize = 32.0f; // Base tile size
+                    ImTextureID textureID = (ImTextureID)(intptr_t)sdlTexture;                    // Use texture dimensions, applying universal grid fitting and transform scale
                     float texWidth = sprite.texture->getWidth();
                     float texHeight = sprite.texture->getHeight();
                     
-                    // Apply transform scale to the base dimensions
-                    float scaledWidth = texWidth * transform.scale.x * m_zoomLevel;
-                    float scaledHeight = texHeight * transform.scale.y * m_zoomLevel;
+                    // Calculate grid-fitting scale to make sprite fit within one grid square
+                    Vector2 gridFitScale = calculateGridFitScale(texWidth, texHeight);
+                    
+                    // Apply grid fitting, transform scale, and zoom
+                    float scaledWidth = GRID_SIZE * gridFitScale.x * transform.scale.x * m_zoomLevel;
+                    float scaledHeight = GRID_SIZE * gridFitScale.y * transform.scale.y * m_zoomLevel;
                     
                     // For rotation, we need to calculate rotated corners
                     if (transform.rotation != 0.0f) {
@@ -350,7 +368,11 @@ void SceneWindow::renderSceneContent() {
                         
                         // Draw selection border around rotated sprite (approximate)
                         if (entity == m_selectedEntity) {
-                            drawList->AddPolyline(corners, 4, IM_COL32(255, 200, 100, 255), ImDrawFlags_Closed, 2.0f);
+                            // Different color/thickness if being dragged
+                            ImU32 borderColor = (m_isDraggingEntity && entity == m_draggedEntity) ? 
+                                              IM_COL32(100, 255, 100, 255) : IM_COL32(255, 200, 100, 255);
+                            float borderThickness = (m_isDraggingEntity && entity == m_draggedEntity) ? 3.0f : 2.0f;
+                            drawList->AddPolyline(corners, 4, borderColor, ImDrawFlags_Closed, borderThickness);
                         }
                     } else {
                         // No rotation - use simple AddImage
@@ -364,7 +386,11 @@ void SceneWindow::renderSceneContent() {
                         
                         // Draw selection border
                         if (entity == m_selectedEntity) {
-                            drawList->AddRect(imageMin, imageMax, IM_COL32(255, 200, 100, 255), 0.0f, 0, 2.0f);
+                            // Different color/thickness if being dragged
+                            ImU32 borderColor = (m_isDraggingEntity && entity == m_draggedEntity) ? 
+                                              IM_COL32(100, 255, 100, 255) : IM_COL32(255, 200, 100, 255);
+                            float borderThickness = (m_isDraggingEntity && entity == m_draggedEntity) ? 3.0f : 2.0f;
+                            drawList->AddRect(imageMin, imageMax, borderColor, 0.0f, 0, borderThickness);
                         }
                     }                    
                     // Draw entity name
@@ -375,27 +401,33 @@ void SceneWindow::renderSceneContent() {
                             IM_COL32(255, 255, 255, 200),
                             entityName.c_str()
                         );
-                    }} else {
+                    }                } else {
                     // Draw a simple dot for entities with sprites but no texture/not visible
                     ImU32 color = IM_COL32(100, 100, 100, 255);
                     if (entity == m_selectedEntity) {
-                        color = IM_COL32(255, 200, 100, 255);
+                        // Different color if being dragged
+                        color = (m_isDraggingEntity && entity == m_draggedEntity) ? 
+                               IM_COL32(100, 255, 100, 255) : IM_COL32(255, 200, 100, 255);
                     }
-                    drawList->AddCircleFilled(ImVec2(screenPos.x, screenPos.y), 3.0f * m_zoomLevel, color);
+                    float radius = (m_isDraggingEntity && entity == m_draggedEntity) ? 4.0f : 3.0f;
+                    drawList->AddCircleFilled(ImVec2(screenPos.x, screenPos.y), radius * m_zoomLevel, color);
                 }
             } else {
                 // Draw a simple dot for entities without sprites
                 ImU32 color = IM_COL32(150, 150, 150, 255);
                 if (entity == m_selectedEntity) {
-                    color = IM_COL32(255, 200, 100, 255);
+                    // Different color if being dragged
+                    color = (m_isDraggingEntity && entity == m_draggedEntity) ? 
+                           IM_COL32(100, 255, 100, 255) : IM_COL32(255, 200, 100, 255);
                 }
-                drawList->AddCircleFilled(ImVec2(screenPos.x, screenPos.y), 3.0f * m_zoomLevel, color);
+                float radius = (m_isDraggingEntity && entity == m_draggedEntity) ? 4.0f : 3.0f;
+                drawList->AddCircleFilled(ImVec2(screenPos.x, screenPos.y), radius * m_zoomLevel, color);
             }
         }
     }
-      // Grid overlay
+    // Grid overlay
     if (canvasSize.x > 0 && canvasSize.y > 0 && m_zoomLevel > 0.5f) {
-        float gridSize = 32.0f * m_zoomLevel;
+        float gridSize = GRID_SIZE * m_zoomLevel;
         ImU32 gridColor = IM_COL32(70, 70, 80, 100);
         
         // Vertical lines
@@ -468,25 +500,157 @@ void SceneWindow::handleInput() {
         }
     }
 
-    // Left mouse button handling: drag to pan, click to select
+    // Left mouse button handling: entity dragging and selection
     if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
         ImVec2 mousePos = ImGui::GetMousePos();
         
         if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
             // Start tracking for potential drag
             m_isDragging = false;
+            m_isDraggingEntity = false;
             m_dragStartPos = mousePos;
-        } else if (!m_isDragging) {
+            m_draggedEntity = 0;
+            
+            // Check if we clicked on an entity
+            ImVec2 canvasPos = ImGui::GetCursorScreenPos();
+            ImVec2 canvasSize = ImGui::GetContentRegionAvail();
+            
+            // Convert mouse position to world coordinates
+            ImVec2 canvasCenter = ImVec2(canvasPos.x + canvasSize.x / 2, canvasPos.y + canvasSize.y / 2);
+            Vector2 worldMousePos;
+            worldMousePos.x = ((mousePos.x - canvasCenter.x) / m_zoomLevel) + m_cameraPosition.x;
+            worldMousePos.y = ((mousePos.y - canvasCenter.y) / m_zoomLevel) + m_cameraPosition.y;
+            
+            // Find entity at mouse position for potential dragging
+            EntityID clickedEntity = 0;
+            float closestDistance = std::numeric_limits<float>::max();
+            
+            if (m_scene) {
+                auto allEntities = m_scene->getAllLivingEntities();
+                for (EntityID entity : allEntities) {
+                    if (!m_scene->hasComponent<Transform>(entity)) continue;
+                    
+                    auto& transform = m_scene->getComponent<Transform>(entity);
+                    Vector2 entityPos = transform.position;
+                    
+                    bool isInside = false;
+                    float distance = std::numeric_limits<float>::max();
+                    
+                    // Check if entity has a sprite component for proper collision detection
+                    if (m_scene->hasComponent<Sprite>(entity)) {
+                        auto& sprite = m_scene->getComponent<Sprite>(entity);
+                        if (sprite.texture && sprite.visible) {
+                            // Use actual texture dimensions for collision detection
+                            float texWidth = sprite.texture->getWidth();
+                            float texHeight = sprite.texture->getHeight();
+                            
+                            // Apply transform scale
+                            float scaledWidth = texWidth * transform.scale.x;
+                            float scaledHeight = texHeight * transform.scale.y;
+                            
+                            if (transform.rotation != 0.0f) {
+                                // For rotated sprites, check if point is inside rotated rectangle
+                                float angleRad = transform.rotation * (3.14159f / 180.0f);
+                                float cosA = cos(angleRad);
+                                float sinA = sin(angleRad);
+                                
+                                // Transform mouse position to local entity space (reverse rotation)
+                                float localX = (worldMousePos.x - entityPos.x) * cosA + (worldMousePos.y - entityPos.y) * sinA;
+                                float localY = -(worldMousePos.x - entityPos.x) * sinA + (worldMousePos.y - entityPos.y) * cosA;
+                                
+                                // Check if point is inside the non-rotated rectangle
+                                float halfW = scaledWidth / 2.0f;
+                                float halfH = scaledHeight / 2.0f;
+                                
+                                if (localX >= -halfW && localX <= halfW && localY >= -halfH && localY <= halfH) {
+                                    isInside = true;
+                                    distance = sqrt(localX * localX + localY * localY);
+                                }
+                            } else {
+                                // For non-rotated sprites, simple rectangle check
+                                float halfW = scaledWidth / 2.0f;
+                                float halfH = scaledHeight / 2.0f;
+                                
+                                float deltaX = worldMousePos.x - entityPos.x;
+                                float deltaY = worldMousePos.y - entityPos.y;
+                                
+                                if (deltaX >= -halfW && deltaX <= halfW && deltaY >= -halfH && deltaY <= halfH) {
+                                    isInside = true;
+                                    distance = sqrt(deltaX * deltaX + deltaY * deltaY);
+                                }
+                            }
+                        } else {
+                            // Sprite component exists but no texture or not visible - use small circle
+                            float circleRadius = 8.0f;
+                            distance = sqrt(pow(worldMousePos.x - entityPos.x, 2) + 
+                                          pow(worldMousePos.y - entityPos.y, 2));
+                            if (distance <= circleRadius) {
+                                isInside = true;
+                            }
+                        }
+                    } else {
+                        // No sprite component - use small circle for selection
+                        float circleRadius = 8.0f;
+                        distance = sqrt(pow(worldMousePos.x - entityPos.x, 2) + 
+                                      pow(worldMousePos.y - entityPos.y, 2));
+                        if (distance <= circleRadius) {
+                            isInside = true;
+                        }
+                    }
+                    
+                    // Select the closest entity that contains the mouse position
+                    if (isInside && distance < closestDistance) {
+                        closestDistance = distance;
+                        clickedEntity = entity;
+                    }
+                }
+            }
+            
+            // If we found an entity, prepare for potential dragging
+            if (clickedEntity != 0) {
+                m_draggedEntity = clickedEntity;
+                // Calculate offset from entity center to mouse position
+                auto& transform = m_scene->getComponent<Transform>(clickedEntity);
+                m_entityDragOffset.x = worldMousePos.x - transform.position.x;
+                m_entityDragOffset.y = worldMousePos.y - transform.position.y;
+            }
+            
+        } else if (!m_isDragging && !m_isDraggingEntity) {
             // Check if we've moved far enough to start dragging
             ImVec2 dragDelta = ImVec2(mousePos.x - m_dragStartPos.x, mousePos.y - m_dragStartPos.y);
             float dragDistance = sqrt(dragDelta.x * dragDelta.x + dragDelta.y * dragDelta.y);
             
             if (dragDistance > m_dragThreshold) {
-                m_isDragging = true;
+                if (m_draggedEntity != 0) {
+                    // Start entity dragging
+                    m_isDraggingEntity = true;
+                    setSelectedEntity(m_draggedEntity); // Select the entity we're dragging
+                    setDirty(true); // Mark scene as dirty since we're modifying it
+                } else {
+                    // Start camera dragging
+                    m_isDragging = true;
+                }
             }
         }
         
-        if (m_isDragging) {
+        if (m_isDraggingEntity && m_draggedEntity != 0) {
+            // Update entity position while dragging
+            ImVec2 canvasPos = ImGui::GetCursorScreenPos();
+            ImVec2 canvasSize = ImGui::GetContentRegionAvail();
+            
+            // Convert current mouse position to world coordinates
+            ImVec2 canvasCenter = ImVec2(canvasPos.x + canvasSize.x / 2, canvasPos.y + canvasSize.y / 2);
+            Vector2 worldMousePos;
+            worldMousePos.x = ((mousePos.x - canvasCenter.x) / m_zoomLevel) + m_cameraPosition.x;
+            worldMousePos.y = ((mousePos.y - canvasCenter.y) / m_zoomLevel) + m_cameraPosition.y;
+            
+            // Update entity position (subtract the offset to maintain relative position)
+            if (m_scene && m_scene->hasComponent<Transform>(m_draggedEntity)) {
+                auto& transform = m_scene->getComponent<Transform>(m_draggedEntity);
+                transform.position.x = worldMousePos.x - m_entityDragOffset.x;
+                transform.position.y = worldMousePos.y - m_entityDragOffset.y;
+            }
+        } else if (m_isDragging) {
             // Pan the camera based on mouse movement
             ImVec2 delta = ImGui::GetMouseDragDelta(ImGuiMouseButton_Left);
             if (delta.x != 0 || delta.y != 0) {
@@ -498,129 +662,131 @@ void SceneWindow::handleInput() {
     }
     
     // Entity selection with left mouse button (only if not dragging)
-    if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && !m_isDragging) {
-        ImVec2 mousePos = ImGui::GetMousePos();
-        ImVec2 canvasPos = ImGui::GetCursorScreenPos();
-        ImVec2 canvasSize = ImGui::GetContentRegionAvail();
-        
-        // Convert mouse position to world coordinates (matching TileRenderer coordinate system)
-        ImVec2 canvasCenter = ImVec2(canvasPos.x + canvasSize.x / 2, canvasPos.y + canvasSize.y / 2);
-        Vector2 worldMousePos;
-        // Use the same coordinate transformation as TileRenderer
-        worldMousePos.x = ((mousePos.x - canvasCenter.x) / m_zoomLevel) + m_cameraPosition.x;
-        worldMousePos.y = ((mousePos.y - canvasCenter.y) / m_zoomLevel) + m_cameraPosition.y;
-          // Find entity at mouse position (using consistent coordinate system)
-        EntityID clickedEntity = 0;
-        float closestDistance = std::numeric_limits<float>::max();
-        
-        if (m_scene) {
-            auto allEntities = m_scene->getAllLivingEntities();
-            for (EntityID entity : allEntities) {
-                if (!m_scene->hasComponent<Transform>(entity)) continue;
-                
-                auto& transform = m_scene->getComponent<Transform>(entity);
-                Vector2 entityPos = transform.position;
-                
-                bool isInside = false;
-                float distance = std::numeric_limits<float>::max();
-                
-                // Check if entity has a sprite component for proper collision detection
-                if (m_scene->hasComponent<Sprite>(entity)) {
-                    auto& sprite = m_scene->getComponent<Sprite>(entity);
-                    if (sprite.texture && sprite.visible) {
-                        // Use actual texture dimensions for collision detection
-                        float texWidth = sprite.texture->getWidth();
-                        float texHeight = sprite.texture->getHeight();
-                        
-                        // Apply transform scale
-                        float scaledWidth = texWidth * transform.scale.x;
-                        float scaledHeight = texHeight * transform.scale.y;
-                        
-                        if (transform.rotation != 0.0f) {
-                            // For rotated sprites, check if point is inside rotated rectangle
-                            float angleRad = transform.rotation * (3.14159f / 180.0f);
-                            float cosA = cos(angleRad);
-                            float sinA = sin(angleRad);
+    if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+        if (!m_isDragging && !m_isDraggingEntity) {
+            // This was a simple click - perform entity selection
+            ImVec2 mousePos = ImGui::GetMousePos();
+            ImVec2 canvasPos = ImGui::GetCursorScreenPos();
+            ImVec2 canvasSize = ImGui::GetContentRegionAvail();
+            
+            // Convert mouse position to world coordinates
+            ImVec2 canvasCenter = ImVec2(canvasPos.x + canvasSize.x / 2, canvasPos.y + canvasSize.y / 2);
+            Vector2 worldMousePos;
+            worldMousePos.x = ((mousePos.x - canvasCenter.x) / m_zoomLevel) + m_cameraPosition.x;
+            worldMousePos.y = ((mousePos.y - canvasCenter.y) / m_zoomLevel) + m_cameraPosition.y;
+            
+            // Find entity at mouse position
+            EntityID clickedEntity = 0;
+            float closestDistance = std::numeric_limits<float>::max();
+            
+            if (m_scene) {
+                auto allEntities = m_scene->getAllLivingEntities();
+                for (EntityID entity : allEntities) {
+                    if (!m_scene->hasComponent<Transform>(entity)) continue;
+                    
+                    auto& transform = m_scene->getComponent<Transform>(entity);
+                    Vector2 entityPos = transform.position;
+                    
+                    bool isInside = false;
+                    float distance = std::numeric_limits<float>::max();
+                    
+                    // Check if entity has a sprite component for proper collision detection
+                    if (m_scene->hasComponent<Sprite>(entity)) {
+                        auto& sprite = m_scene->getComponent<Sprite>(entity);
+                        if (sprite.texture && sprite.visible) {
+                            // Use actual texture dimensions for collision detection
+                            float texWidth = sprite.texture->getWidth();
+                            float texHeight = sprite.texture->getHeight();
                             
-                            // Transform mouse position to local entity space (reverse rotation)
-                            float localX = (worldMousePos.x - entityPos.x) * cosA + (worldMousePos.y - entityPos.y) * sinA;
-                            float localY = -(worldMousePos.x - entityPos.x) * sinA + (worldMousePos.y - entityPos.y) * cosA;
+                            // Apply transform scale
+                            float scaledWidth = texWidth * transform.scale.x;
+                            float scaledHeight = texHeight * transform.scale.y;
                             
-                            // Check if point is inside the non-rotated rectangle
-                            float halfW = scaledWidth / 2.0f;
-                            float halfH = scaledHeight / 2.0f;
-                            
-                            if (localX >= -halfW && localX <= halfW && localY >= -halfH && localY <= halfH) {
-                                isInside = true;
-                                distance = sqrt(localX * localX + localY * localY);
+                            if (transform.rotation != 0.0f) {
+                                // For rotated sprites, check if point is inside rotated rectangle
+                                float angleRad = transform.rotation * (3.14159f / 180.0f);
+                                float cosA = cos(angleRad);
+                                float sinA = sin(angleRad);
+                                
+                                // Transform mouse position to local entity space (reverse rotation)
+                                float localX = (worldMousePos.x - entityPos.x) * cosA + (worldMousePos.y - entityPos.y) * sinA;
+                                float localY = -(worldMousePos.x - entityPos.x) * sinA + (worldMousePos.y - entityPos.y) * cosA;
+                                
+                                // Check if point is inside the non-rotated rectangle
+                                float halfW = scaledWidth / 2.0f;
+                                float halfH = scaledHeight / 2.0f;
+                                
+                                if (localX >= -halfW && localX <= halfW && localY >= -halfH && localY <= halfH) {
+                                    isInside = true;
+                                    distance = sqrt(localX * localX + localY * localY);
+                                }
+                            } else {
+                                // For non-rotated sprites, simple rectangle check
+                                float halfW = scaledWidth / 2.0f;
+                                float halfH = scaledHeight / 2.0f;
+                                
+                                float deltaX = worldMousePos.x - entityPos.x;
+                                float deltaY = worldMousePos.y - entityPos.y;
+                                
+                                if (deltaX >= -halfW && deltaX <= halfW && deltaY >= -halfH && deltaY <= halfH) {
+                                    isInside = true;
+                                    distance = sqrt(deltaX * deltaX + deltaY * deltaY);
+                                }
                             }
                         } else {
-                            // For non-rotated sprites, simple rectangle check
-                            float halfW = scaledWidth / 2.0f;
-                            float halfH = scaledHeight / 2.0f;
-                            
-                            float deltaX = worldMousePos.x - entityPos.x;
-                            float deltaY = worldMousePos.y - entityPos.y;
-                            
-                            if (deltaX >= -halfW && deltaX <= halfW && deltaY >= -halfH && deltaY <= halfH) {
+                            // Sprite component exists but no texture or not visible - use small circle
+                            float circleRadius = 8.0f; // Small radius for invisible sprites
+                            distance = sqrt(pow(worldMousePos.x - entityPos.x, 2) + 
+                                          pow(worldMousePos.y - entityPos.y, 2));
+                            if (distance <= circleRadius) {
                                 isInside = true;
-                                distance = sqrt(deltaX * deltaX + deltaY * deltaY);
                             }
                         }
                     } else {
-                        // Sprite component exists but no texture or not visible - use small circle
-                        float circleRadius = 8.0f; // Small radius for invisible sprites
+                        // No sprite component - use small circle for selection
+                        float circleRadius = 8.0f; // Small radius for non-sprite entities
                         distance = sqrt(pow(worldMousePos.x - entityPos.x, 2) + 
                                       pow(worldMousePos.y - entityPos.y, 2));
                         if (distance <= circleRadius) {
                             isInside = true;
                         }
                     }
-                } else {
-                    // No sprite component - use small circle for selection
-                    float circleRadius = 8.0f; // Small radius for non-sprite entities
-                    distance = sqrt(pow(worldMousePos.x - entityPos.x, 2) + 
-                                  pow(worldMousePos.y - entityPos.y, 2));
-                    if (distance <= circleRadius) {
-                        isInside = true;
+                    
+                    // Select the closest entity that contains the mouse position
+                    if (isInside && distance < closestDistance) {
+                        closestDistance = distance;
+                        clickedEntity = entity;
                     }
                 }
-                
-                // Select the closest entity that contains the mouse position
-                if (isInside && distance < closestDistance) {
-                    closestDistance = distance;
-                    clickedEntity = entity;
-                }
             }
-        }
-        
-        // If no entity was found, check for procedural tiles and convert to entity
-        if (clickedEntity == 0 && m_proceduralMap) {
-            // Convert world position to tile coordinates
-            Vector2 gridPos = m_proceduralMap->getGridPosition(worldMousePos);
-            int tileX = static_cast<int>(gridPos.x);
-            int tileY = static_cast<int>(gridPos.y);
             
-            if (m_proceduralMap->isValidPosition(tileX, tileY)) {
-                const Tile& tile = m_proceduralMap->getTile(tileX, tileY);
+            // If no entity was found, check for procedural tiles and convert to entity
+            if (clickedEntity == 0 && m_proceduralMap) {
+                // Convert world position to tile coordinates
+                Vector2 gridPos = m_proceduralMap->getGridPosition(worldMousePos);
+                int tileX = static_cast<int>(gridPos.x);
+                int tileY = static_cast<int>(gridPos.y);
                 
-                // Convert non-empty tiles to entities for selection and editing
-                if (tile.type != TileType::Empty) {
-                    clickedEntity = convertTileToEntity(tileX, tileY, tile);
+                if (m_proceduralMap->isValidPosition(tileX, tileY)) {
+                    const Tile& tile = m_proceduralMap->getTile(tileX, tileY);
+                    
+                    // Convert non-empty tiles to entities for selection and editing
+                    if (tile.type != TileType::Empty) {
+                        clickedEntity = convertTileToEntity(tileX, tileY, tile);
+                    }
                 }
             }
+            
+            setSelectedEntity(clickedEntity);
         }
-          setSelectedEntity(clickedEntity);
         
-        // Reset drag state after selection
+        // Reset all drag states when mouse is released
         m_isDragging = false;
+        m_isDraggingEntity = false;
+        m_draggedEntity = 0;
     }
     
-    // Reset drag state when mouse is released
-    if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-        m_isDragging = false;
-    }
-      // Keyboard shortcuts
+    // Keyboard shortcuts
     if (m_viewportFocused) {
         // Zoom shortcuts
         if (ImGui::IsKeyPressed(ImGuiKey_Equal) || ImGui::IsKeyPressed(ImGuiKey_KeypadAdd)) {
@@ -676,6 +842,10 @@ EntityID SceneWindow::convertTileToEntity(int tileX, int tileY, const Tile& tile
     Vector2 worldPos = m_proceduralMap->getWorldPosition(tileX, tileY);
     m_scene->addComponent<Transform>(entity, Transform(worldPos));
     
+    // Mark as procedurally generated (converted tile)
+    m_scene->addComponent<ProceduralGenerated>(entity, 
+        ProceduralGenerated(ProceduralGenerated::GenerationType::ConvertedTile, tileX, tileY));
+    
     // Add sprite component with the tile's texture
     auto& engine = Engine::getInstance();
     auto resourceManager = engine.getResourceManager();
@@ -687,6 +857,11 @@ EntityID SceneWindow::convertTileToEntity(int tileX, int tileY, const Tile& tile
             sprite.sourceRect = Rect(0, 0, texture->getWidth(), texture->getHeight());
             sprite.visible = true;
             sprite.layer = 0;
+            
+            // Apply grid-fitting scale to the entity's transform
+            Vector2 gridFitScale = calculateGridFitScale(texture->getWidth(), texture->getHeight());
+            auto& transform = m_scene->getComponent<Transform>(entity);
+            transform.scale = gridFitScale;
         }
         m_scene->addComponent<Sprite>(entity, sprite);
     }
@@ -708,4 +883,35 @@ EntityID SceneWindow::convertTileToEntity(int tileX, int tileY, const Tile& tile
     // a selectable entity on top of it. This allows editing while maintaining performance.
     
     return entity;
+}
+
+Vector2 SceneWindow::calculateGridFitScale(float textureWidth, float textureHeight) const {
+    // Calculate the scale needed to fit the texture within one grid square
+    // while maintaining aspect ratio
+    float scaleX = GRID_SIZE / textureWidth;
+    float scaleY = GRID_SIZE / textureHeight;
+    
+    // Use the smaller scale to ensure the sprite fits entirely within the grid square
+    float uniformScale = std::min(scaleX, scaleY);
+    
+    return Vector2(uniformScale, uniformScale);
+}
+
+void SceneWindow::applyGridFittingToEntity(EntityID entity) {
+    if (!m_scene || !m_scene->hasComponent<Transform>(entity)) return;
+    
+    // Check if entity has a sprite component
+    if (m_scene->hasComponent<Sprite>(entity)) {
+        auto& sprite = m_scene->getComponent<Sprite>(entity);
+        if (sprite.texture) {
+            // Calculate and apply grid-fitting scale
+            Vector2 gridFitScale = calculateGridFitScale(sprite.texture->getWidth(), sprite.texture->getHeight());
+            auto& transform = m_scene->getComponent<Transform>(entity);
+            transform.scale = gridFitScale;
+        }
+    } else {
+        // For entities without sprites, set default grid scale
+        auto& transform = m_scene->getComponent<Transform>(entity);
+        transform.scale = Vector2(1.0f, 1.0f); // Default scale for non-sprite entities
+    }
 }

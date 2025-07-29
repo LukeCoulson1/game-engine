@@ -1,78 +1,473 @@
 #include "NodeEditor.h"
 #include "SceneWindow.h"
 #include "../core/Engine.h"
+#include "../components/Components.h"
 #include "../utils/ConfigManager.h"
 #include "../utils/ResourceManager.h"
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <fstream>
+#include <sstream>
+#include <iomanip>
 
 namespace NodeEditor {
+
+    static NodeEditorWindow* s_currentNodeEditor = nullptr;
 
     Node::Node(int nodeId, NodeType nodeType, const std::string& nodeName, ImVec2 pos)
         : id(nodeId), type(nodeType), name(nodeName), position(pos), size(120, 80) {
         
-        // Set up pins based on node type
+        // Set up pins and properties based on node type
         if (type == NodeType::Entity) {
-            // Entity nodes have multiple output pins for each component
-            outputPins.push_back({nodeId * PIN_ID_MULTIPLIER + TRANSFORM_PIN_OFFSET, PinType::Output, "Transform", ImVec2()});
-            outputPins.push_back({nodeId * PIN_ID_MULTIPLIER + SPRITE_PIN_OFFSET, PinType::Output, "Sprite", ImVec2()});
-            outputPins.push_back({nodeId * PIN_ID_MULTIPLIER + PLAYER_PIN_OFFSET, PinType::Output, "Player", ImVec2()});
+            // Entity nodes have a single output pin that can connect to any compatible node
+            outputPins.push_back({nodeId * PIN_ID_MULTIPLIER + 1, PinType::Output, PinDataType::Entity, "Entity", ImVec2()});
+            printf("DEBUG: Created Entity node %d with single Entity output pin %d\n", nodeId, nodeId * PIN_ID_MULTIPLIER + 1);
+            headerColor = IM_COL32(70, 130, 180, 255);
+            description = "Represents a game entity with components";
         } else {
-            // All component nodes have the same input pin structure
-            inputPins.push_back({nodeId * PIN_ID_MULTIPLIER + TRANSFORM_PIN_OFFSET, PinType::Input, "Entity", ImVec2()});
-            
-            // Create component data based on type
-            switch (type) {
-                case NodeType::SpriteComponent:
-                    componentData = std::make_shared<Sprite>();
-                    // Set larger constraints for sprite nodes
-                    minSize = ImVec2(200, 120);
-                    maxSize = ImVec2(400, 300);
-                    // Start with larger default size for sprite nodes
-                    size = ImVec2(240, 160);
-                    break;
-                case NodeType::PlayerController:
-                    componentData = std::make_shared<PlayerController>();
-                    break;
-                case NodeType::PlayerStats:
-                    componentData = std::make_shared<PlayerStats>();
-                    break;
-                case NodeType::PlayerPhysics:
-                    componentData = std::make_shared<PlayerPhysics>();
-                    break;
-                case NodeType::PlayerInventory:
-                    componentData = std::make_shared<PlayerInventory>();
-                    break;
-                case NodeType::PlayerAbilities:
-                    componentData = std::make_shared<PlayerAbilities>();
-                    break;
-                case NodeType::PlayerState:
-                    componentData = std::make_shared<PlayerState>();
-                    break;
-                case NodeType::Transform:
-                    componentData = std::make_shared<Transform>();
-                    // Set larger constraints for transform nodes
-                    minSize = ImVec2(200, 140);
-                    maxSize = ImVec2(400, 300);
-                    // Start with larger default size for transform nodes
-                    size = ImVec2(240, 140);
-                    break;
-                case NodeType::Rotation:
-                    componentData = std::make_shared<Rotation>();
-                    break;
-                case NodeType::Scale:
-                    componentData = std::make_shared<Scale>();
-                    break;
-                case NodeType::Collider:
-                    componentData = std::make_shared<Collider>();
-                    break;
-                case NodeType::RigidBody:
-                    componentData = std::make_shared<RigidBody>();
-                    break;
-                default:
-                    break;
-            }
+            // Setup pins and data based on specific node type
+            setupBasicPins(nodeType);
+            setupNodeAppearance(nodeType);
+            createComponentData(nodeType);
+        }
+    }
+    
+    void Node::setupBasicPins(NodeType nodeType) {
+        switch (nodeType) {
+            // Component nodes
+            case NodeType::SpriteComponent:
+            case NodeType::Transform:
+            case NodeType::Collider:
+            case NodeType::RigidBody:
+            case NodeType::PlayerController:
+            case NodeType::PlayerStats:
+            case NodeType::PlayerPhysics:
+            case NodeType::PlayerInventory:
+            case NodeType::PlayerAbilities:
+            case NodeType::PlayerState:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Entity, "Entity", ImVec2()});
+                break;
+                
+            // NPC and AI Component nodes
+            case NodeType::NPCController:
+            case NodeType::AIBehavior:
+            case NodeType::AIStateMachine:
+            case NodeType::AIPathfinding:
+            case NodeType::NPCDialogue:
+            case NodeType::NPCInteraction:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Entity, "Entity", ImVec2()});
+                break;
+                
+            // Environment Component nodes
+            case NodeType::EnvironmentCollider:
+            case NodeType::EnvironmentTrigger:
+            case NodeType::EnvironmentHazard:
+            case NodeType::EnvironmentDoor:
+            case NodeType::EnvironmentSwitch:
+            case NodeType::EnvironmentPlatform:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Entity, "Entity", ImVec2()});
+                break;
+                
+            // Audio and Effects Component nodes
+            case NodeType::AudioSource:
+            case NodeType::AudioListener:
+            case NodeType::ParticleSystem:
+            case NodeType::ParticleEmitter:
+            case NodeType::VisualEffect:
+            case NodeType::LightSource:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Entity, "Entity", ImVec2()});
+                break;
+                
+            // UI Component nodes
+            case NodeType::UIElement:
+            case NodeType::UIButton:
+            case NodeType::UIText:
+            case NodeType::UIImage:
+            case NodeType::UIHealthBar:
+            case NodeType::UIInventorySlot:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Entity, "Entity", ImVec2()});
+                break;
+                
+            // Math nodes
+            case NodeType::MathAdd:
+            case NodeType::MathSubtract:
+            case NodeType::MathMultiply:
+            case NodeType::MathDivide:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Float, "A", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Input, PinDataType::Float, "B", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Output, PinDataType::Float, "Result", ImVec2()});
+                break;
+                
+            case NodeType::MathSin:
+            case NodeType::MathCos:
+            case NodeType::MathAbs:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Float, "Value", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Output, PinDataType::Float, "Result", ImVec2()});
+                break;
+                
+            case NodeType::MathMin:
+            case NodeType::MathMax:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Float, "A", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Input, PinDataType::Float, "B", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Output, PinDataType::Float, "Result", ImVec2()});
+                break;
+                
+            case NodeType::MathDistance:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Vector2, "Point A", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Input, PinDataType::Vector2, "Point B", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Output, PinDataType::Float, "Distance", ImVec2()});
+                break;
+                
+            case NodeType::MathNormalize:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Vector2, "Vector", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Output, PinDataType::Vector2, "Normalized", ImVec2()});
+                break;
+                
+            case NodeType::MathDotProduct:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Vector2, "A", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Input, PinDataType::Vector2, "B", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Output, PinDataType::Float, "Dot Product", ImVec2()});
+                break;
+                
+            case NodeType::RandomFloat:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Float, "Min", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Input, PinDataType::Float, "Max", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Output, PinDataType::Float, "Random", ImVec2()});
+                break;
+                
+            case NodeType::RandomInt:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Int, "Min", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Input, PinDataType::Int, "Max", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Output, PinDataType::Int, "Random", ImVec2()});
+                break;
+                
+            case NodeType::MathClamp:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Float, "Value", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Input, PinDataType::Float, "Min", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Input, PinDataType::Float, "Max", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 4, PinType::Output, PinDataType::Float, "Result", ImVec2()});
+                break;
+                
+            case NodeType::MathLerp:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Float, "A", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Input, PinDataType::Float, "B", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Input, PinDataType::Float, "T", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 4, PinType::Output, PinDataType::Float, "Result", ImVec2()});
+                break;
+                
+            // Logic nodes
+            case NodeType::LogicAND:
+            case NodeType::LogicOR:
+            case NodeType::LogicXOR:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Bool, "A", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Input, PinDataType::Bool, "B", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Output, PinDataType::Bool, "Result", ImVec2()});
+                break;
+                
+            case NodeType::LogicNOT:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Bool, "Input", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Output, PinDataType::Bool, "Result", ImVec2()});
+                break;
+                
+            case NodeType::Compare:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Float, "A", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Input, PinDataType::Float, "B", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Output, PinDataType::Bool, "A > B", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 4, PinType::Output, PinDataType::Bool, "A < B", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 5, PinType::Output, PinDataType::Bool, "A == B", ImVec2()});
+                break;
+                
+            case NodeType::Branch:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Event, "Exec", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Input, PinDataType::Bool, "Condition", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Output, PinDataType::Event, "True", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 4, PinType::Output, PinDataType::Event, "False", ImVec2()});
+                break;
+                
+            // Flow control nodes
+            case NodeType::Sequence:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Event, "Start", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Output, PinDataType::Event, "Step 1", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Output, PinDataType::Event, "Step 2", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 4, PinType::Output, PinDataType::Event, "Finished", ImVec2()});
+                break;
+                
+            case NodeType::Parallel:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Event, "Start", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Output, PinDataType::Event, "Branch 1", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Output, PinDataType::Event, "Branch 2", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 4, PinType::Output, PinDataType::Event, "Branch 3", ImVec2()});
+                break;
+                
+            case NodeType::Delay:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Event, "Start", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Input, PinDataType::Float, "Duration", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Output, PinDataType::Event, "Finished", ImVec2()});
+                break;
+                
+            case NodeType::ForLoop:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Event, "Start", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Input, PinDataType::Int, "Count", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Output, PinDataType::Event, "Loop Body", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 4, PinType::Output, PinDataType::Int, "Index", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 5, PinType::Output, PinDataType::Event, "Completed", ImVec2()});
+                break;
+                
+            case NodeType::WhileLoop:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Event, "Start", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Input, PinDataType::Bool, "Condition", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Output, PinDataType::Event, "Loop Body", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 4, PinType::Output, PinDataType::Event, "Completed", ImVec2()});
+                break;
+                
+            // Constant nodes
+            case NodeType::ConstantFloat:
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Output, PinDataType::Float, "Value", ImVec2()});
+                outputPins[0].floatValue = 0.0f;
+                break;
+                
+            case NodeType::ConstantInt:
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Output, PinDataType::Int, "Value", ImVec2()});
+                outputPins[0].intValue = 0;
+                break;
+                
+            case NodeType::ConstantBool:
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Output, PinDataType::Bool, "Value", ImVec2()});
+                outputPins[0].boolValue = false;
+                break;
+                
+            case NodeType::ConstantString:
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Output, PinDataType::String, "Value", ImVec2()});
+                outputPins[0].stringValue = "";
+                break;
+                
+            case NodeType::ConstantVector2:
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Output, PinDataType::Vector2, "Value", ImVec2()});
+                outputPins[0].vector2Value = Vector2(0, 0);
+                break;
+                
+            case NodeType::Variable:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Any, "Set", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Output, PinDataType::Any, "Get", ImVec2()});
+                break;
+                
+            case NodeType::GlobalVariable:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Any, "Set", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Output, PinDataType::Any, "Get", ImVec2()});
+                break;
+                
+            case NodeType::EntityReference:
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Output, PinDataType::Entity, "Entity", ImVec2()});
+                break;
+                
+            // Event nodes
+            case NodeType::OnKeyPress:
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Output, PinDataType::Event, "Pressed", ImVec2()});
+                break;
+                
+            case NodeType::OnKeyRelease:
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Output, PinDataType::Event, "Released", ImVec2()});
+                break;
+                
+            case NodeType::OnMouseClick:
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Output, PinDataType::Event, "Clicked", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Output, PinDataType::Vector2, "Position", ImVec2()});
+                break;
+                
+            case NodeType::OnMouseHover:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Entity, "Entity", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Output, PinDataType::Event, "Enter", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Output, PinDataType::Event, "Exit", ImVec2()});
+                break;
+                
+            case NodeType::OnCollision:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Entity, "Entity", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Output, PinDataType::Event, "OnEnter", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Output, PinDataType::Event, "OnExit", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 4, PinType::Output, PinDataType::Entity, "Other Entity", ImVec2()});
+                break;
+                
+            case NodeType::OnTriggerEnter:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Entity, "Trigger", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Output, PinDataType::Event, "Triggered", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Output, PinDataType::Entity, "Other Entity", ImVec2()});
+                break;
+                
+            case NodeType::OnTriggerExit:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Entity, "Trigger", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Output, PinDataType::Event, "Exited", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Output, PinDataType::Entity, "Other Entity", ImVec2()});
+                break;
+                
+            case NodeType::OnEntityDestroyed:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Entity, "Entity", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Output, PinDataType::Event, "Destroyed", ImVec2()});
+                break;
+                
+            case NodeType::OnEntitySpawned:
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Output, PinDataType::Event, "Spawned", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Output, PinDataType::Entity, "New Entity", ImVec2()});
+                break;
+                
+            case NodeType::TimerNode:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Float, "Duration", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Input, PinDataType::Bool, "Loop", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Output, PinDataType::Event, "Triggered", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 4, PinType::Output, PinDataType::Float, "Remaining", ImVec2()});
+                break;
+                
+            // Game action nodes
+            case NodeType::MoveTowards:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Entity, "Entity", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Input, PinDataType::Vector2, "Target", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Input, PinDataType::Float, "Speed", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 4, PinType::Output, PinDataType::Event, "Reached", ImVec2()});
+                break;
+                
+            case NodeType::SpawnEntity:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Event, "Spawn", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Input, PinDataType::Vector2, "Position", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Input, PinDataType::String, "Template", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 4, PinType::Output, PinDataType::Entity, "Spawned", ImVec2()});
+                break;
+                
+            case NodeType::DestroyEntity:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Event, "Destroy", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Input, PinDataType::Entity, "Entity", ImVec2()});
+                break;
+                
+            case NodeType::PlaySound:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Event, "Play", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Input, PinDataType::String, "Sound File", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Input, PinDataType::Float, "Volume", ImVec2()});
+                break;
+                
+            case NodeType::StopSound:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Event, "Stop", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Input, PinDataType::String, "Sound File", ImVec2()});
+                break;
+                
+            // Physics nodes
+            case NodeType::ApplyForce:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Event, "Apply", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Input, PinDataType::Entity, "Entity", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Input, PinDataType::Vector2, "Force", ImVec2()});
+                break;
+                
+            case NodeType::SetVelocity:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Event, "Set", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Input, PinDataType::Entity, "Entity", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Input, PinDataType::Vector2, "Velocity", ImVec2()});
+                break;
+                
+            case NodeType::Raycast:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Vector2, "Start", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Input, PinDataType::Vector2, "Direction", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Input, PinDataType::Float, "Distance", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 4, PinType::Output, PinDataType::Bool, "Hit", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 5, PinType::Output, PinDataType::Vector2, "Hit Point", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 6, PinType::Output, PinDataType::Entity, "Hit Entity", ImVec2()});
+                break;
+                
+            // Game State nodes
+            case NodeType::SaveGame:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Event, "Save", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Input, PinDataType::String, "Save Slot", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Output, PinDataType::Event, "Saved", ImVec2()});
+                break;
+                
+            case NodeType::LoadGame:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Event, "Load", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Input, PinDataType::String, "Save Slot", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Output, PinDataType::Event, "Loaded", ImVec2()});
+                break;
+                
+            case NodeType::SceneLoader:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Event, "Load", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Input, PinDataType::String, "Scene Name", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Output, PinDataType::Event, "Loaded", ImVec2()});
+                break;
+                
+            // Health and Combat nodes
+            case NodeType::DealDamage:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Event, "Deal", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Input, PinDataType::Entity, "Target", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Input, PinDataType::Float, "Damage", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 4, PinType::Output, PinDataType::Event, "Dealt", ImVec2()});
+                break;
+                
+            case NodeType::HealEntity:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Event, "Heal", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Input, PinDataType::Entity, "Target", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Input, PinDataType::Float, "Amount", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 4, PinType::Output, PinDataType::Event, "Healed", ImVec2()});
+                break;
+                
+            case NodeType::CheckHealth:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Entity, "Entity", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Output, PinDataType::Float, "Health", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Output, PinDataType::Float, "Max Health", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 4, PinType::Output, PinDataType::Bool, "Is Dead", ImVec2()});
+                break;
+                
+            // Dialogue nodes
+            case NodeType::DialogueNode:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Event, "Start", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Input, PinDataType::String, "Text", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Output, PinDataType::Event, "Choice 1", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 4, PinType::Output, PinDataType::Event, "Choice 2", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 5, PinType::Output, PinDataType::Event, "End", ImVec2()});
+                break;
+                
+            // Debug and utility nodes
+            case NodeType::Print:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Event, "Print", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Input, PinDataType::Any, "Value", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Output, PinDataType::Event, "Printed", ImVec2()});
+                break;
+                
+            case NodeType::Debug:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Event, "Debug", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Input, PinDataType::Any, "Value", ImVec2()});
+                break;
+                
+            // Entity creation nodes
+            case NodeType::EntitySpawner:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Entity, "Target", ImVec2()});     // Entity(1) - gets EntitySpawner component
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Input, PinDataType::Entity, "Template", ImVec2()});   // Entity(2) - serves as spawn template
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Input, PinDataType::Event, "Spawn", ImVec2()});       // Trigger event
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 4, PinType::Input, PinDataType::Vector2, "Position", ImVec2()});   // Spawn position
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 5, PinType::Output, PinDataType::Event, "Spawned", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 6, PinType::Output, PinDataType::Entity, "New Entity", ImVec2()});
+                printf("DEBUG: Created EntitySpawner node %d with Target pin %d and Template pin %d\n", id, id * PIN_ID_MULTIPLIER + 1, id * PIN_ID_MULTIPLIER + 2);
+                break;
+                
+            case NodeType::EntityFactory:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Event, "Create", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Input, PinDataType::String, "Entity Name", ImVec2()});
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Input, PinDataType::Vector2, "Position", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 4, PinType::Output, PinDataType::Event, "Created", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 5, PinType::Output, PinDataType::Entity, "Entity", ImVec2()});
+                break;
+                
+            case NodeType::ParticleEffect:
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Event, "Trigger", ImVec2()});
+                // Note: Target Entity is now selected via dropdown, not input pin
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 3, PinType::Input, PinDataType::String, "Effect Type", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 4, PinType::Output, PinDataType::Event, "Effect Added", ImVec2()});
+                break;
+                
+            case NodeType::Comment:
+                // Comment nodes have no pins, just text
+                minSize = ImVec2(200, 100);
+                break;
+                
+            default:
+                // Generic single input/output for unhandled types
+                inputPins.push_back({id * PIN_ID_MULTIPLIER + 1, PinType::Input, PinDataType::Any, "Input", ImVec2()});
+                outputPins.push_back({id * PIN_ID_MULTIPLIER + 2, PinType::Output, PinDataType::Any, "Output", ImVec2()});
+                break;
         }
     }    void Node::draw(ImVec2 displayPos, float zoom) {
         ImDrawList* drawList = ImGui::GetWindowDrawList();
@@ -93,7 +488,9 @@ namespace NodeEditor {
         drawList->AddText(titlePos, IM_COL32(255, 255, 255, 255), name.c_str());
         
         // Special handling for different node types
-        if (type == NodeType::SpriteComponent) {
+        if (type == NodeType::Entity) {
+            drawEntityNodeContent(nodePos, nodeSize);
+        } else if (type == NodeType::SpriteComponent) {
             drawSpriteNodeContent(nodePos, nodeSize);
         } else if (type == NodeType::Rotation) {
             drawRotationNodeContent(nodePos, nodeSize);
@@ -101,6 +498,10 @@ namespace NodeEditor {
             drawScaleNodeContent(nodePos, nodeSize);
         } else if (type == NodeType::Transform) {
             drawTransformNodeContent(nodePos, nodeSize);
+        } else if (type == NodeType::ParticleEffect) {
+            drawParticleNodeContent(nodePos, nodeSize);
+        } else if (type == NodeType::OnKeyPress) {
+            drawKeyPressNodeContent(nodePos, nodeSize);
         }
         
         // Draw resize handle for selected nodes
@@ -132,6 +533,45 @@ namespace NodeEditor {
         // Update pin positions and draw pins
         updatePinPositions(nodePos, zoom);
         drawPins(drawList, zoom);
+    }
+
+    void Node::drawEntityNodeContent(ImVec2 nodePos, ImVec2 nodeSize) {
+        // Draw static text labels using ImDrawList
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        
+        // Entity Selection Area (clickable)
+        ImVec2 entitySelectPos = ImVec2(nodePos.x + 10, nodePos.y + 35);
+        ImVec2 entitySelectSize = ImVec2(nodeSize.x - 20, 20);
+        ImVec2 entitySelectMax = ImVec2(entitySelectPos.x + entitySelectSize.x, entitySelectPos.y + entitySelectSize.y);
+        
+        // Draw entity selection background
+        ImU32 selectBgColor = IM_COL32(60, 60, 80, 255);
+        drawList->AddRectFilled(entitySelectPos, entitySelectMax, selectBgColor, 3.0f);
+        drawList->AddRect(entitySelectPos, entitySelectMax, IM_COL32(100, 100, 120, 255), 3.0f);
+        
+        // Draw entity selection text
+        char entityText[64];
+        if (associatedEntity != 0) {
+            snprintf(entityText, sizeof(entityText), "Entity: %u", associatedEntity);
+        } else {
+            snprintf(entityText, sizeof(entityText), "Select Entity...");
+        }
+        drawList->AddText(ImVec2(entitySelectPos.x + 5, entitySelectPos.y + 3), 
+                         IM_COL32(255, 255, 255, 255), entityText);
+        
+        // Show basic entity info if one is selected
+        if (associatedEntity != 0) {
+            // Show entity ID (already shown above, but add some additional info)
+            char infoText[64];
+            snprintf(infoText, sizeof(infoText), "ID: %u", associatedEntity);
+            drawList->AddText(ImVec2(nodePos.x + 10, nodePos.y + 65), IM_COL32(200, 200, 200, 255), infoText);
+            
+            // Show connection status
+            drawList->AddText(ImVec2(nodePos.x + 10, nodePos.y + 85), IM_COL32(150, 150, 200, 255), "Ready for connections");
+        } else {
+            // Show selection prompt
+            drawList->AddText(ImVec2(nodePos.x + 10, nodePos.y + 65), IM_COL32(255, 200, 100, 255), "Click above to select");
+        }
     }
     
     void Node::drawPins(ImDrawList* drawList, float zoom) {
@@ -338,7 +778,7 @@ namespace NodeEditor {
             // Scale X input
             float scaleX = scaleComponent->scale.x;
             std::string scaleXId = "##scaleX" + std::to_string(id);
-            if (ImGui::DragFloat(scaleXId.c_str(), &scaleX, 0.01f, 0.1f, 5.0f, "X: %.2f")) {
+            if (ImGui::DragFloat(scaleXId.c_str(), &scaleX, 0.01f, 0.01f, 50.0f, "X: %.3f")) {
                 scaleComponent->scale.x = scaleX;
             }
             
@@ -347,7 +787,7 @@ namespace NodeEditor {
             // Scale Y input
             float scaleY = scaleComponent->scale.y;
             std::string scaleYId = "##scaleY" + std::to_string(id);
-            if (ImGui::DragFloat(scaleYId.c_str(), &scaleY, 0.01f, 0.1f, 5.0f, "Y: %.2f")) {
+            if (ImGui::DragFloat(scaleYId.c_str(), &scaleY, 0.01f, 0.01f, 50.0f, "Y: %.3f")) {
                 scaleComponent->scale.y = scaleY;
             }
             
@@ -416,6 +856,123 @@ namespace NodeEditor {
         drawList->AddText(ImVec2(nodePos.x + 10, nodePos.y + 100), IM_COL32(150, 150, 150, 255), "Double-click to edit");
     }
 
+    void Node::drawParticleNodeContent(ImVec2 nodePos, ImVec2 nodeSize) {
+        // Make sure we have component data
+        if (!componentData) {
+            return;
+        }
+        
+        auto particleComponent = std::static_pointer_cast<ParticleEffect>(componentData);
+        if (!particleComponent) {
+            return;
+        }
+        
+        // Draw static text labels using ImDrawList
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        
+        // Target Entity Selection Area (clickable)
+        ImVec2 entitySelectPos = ImVec2(nodePos.x + 10, nodePos.y + 35);
+        ImVec2 entitySelectSize = ImVec2(nodeSize.x - 20, 20);
+        ImVec2 entitySelectMax = ImVec2(entitySelectPos.x + entitySelectSize.x, entitySelectPos.y + entitySelectSize.y);
+        
+        // Draw entity selection background
+        ImU32 selectBgColor = IM_COL32(60, 60, 80, 255);
+        drawList->AddRectFilled(entitySelectPos, entitySelectMax, selectBgColor, 3.0f);
+        drawList->AddRect(entitySelectPos, entitySelectMax, IM_COL32(100, 100, 120, 255), 3.0f);
+        
+        // Draw entity selection text
+        char entityText[64];
+        if (associatedEntity != 0) {
+            snprintf(entityText, sizeof(entityText), "Entity: %u", associatedEntity);
+        } else {
+            snprintf(entityText, sizeof(entityText), "Select Entity...");
+        }
+        drawList->AddText(ImVec2(entitySelectPos.x + 5, entitySelectPos.y + 3), 
+                         IM_COL32(255, 255, 255, 255), entityText);
+        
+        // Check if entity selection area is clicked
+        if (ImGui::IsMouseHoveringRect(entitySelectPos, entitySelectMax)) {
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+                // Request entity selection popup through global NodeEditorWindow
+                if (s_currentNodeEditor) {
+                    s_currentNodeEditor->openEntitySelectionPopup(id);
+                }
+            }
+        }
+        
+        // Emission info
+        const char* shapeNames[] = {"Point", "Circle", "Box", "Cone"};
+        const char* shapeName = shapeNames[static_cast<int>(particleComponent->shape)];
+        
+        char shapeText[64];
+        snprintf(shapeText, sizeof(shapeText), "Shape: %s", shapeName);
+        drawList->AddText(ImVec2(nodePos.x + 10, nodePos.y + 65), IM_COL32(255, 140, 0, 255), shapeText);
+        
+        // Particle count
+        char countText[64];
+        snprintf(countText, sizeof(countText), "Max: %d", particleComponent->maxParticles);
+        drawList->AddText(ImVec2(nodePos.x + 10, nodePos.y + 85), IM_COL32(200, 200, 200, 255), countText);
+        
+        // Emission rate
+        char rateText[64];
+        snprintf(rateText, sizeof(rateText), "Rate: %.1f/s", particleComponent->emissionRate);
+        drawList->AddText(ImVec2(nodePos.x + 10, nodePos.y + 105), IM_COL32(200, 200, 200, 255), rateText);
+        
+        // Status
+        const char* status = particleComponent->isEmitting ? "Active" : "Stopped";
+        ImU32 statusColor = particleComponent->isEmitting ? IM_COL32(0, 255, 0, 255) : IM_COL32(255, 100, 100, 255);
+        drawList->AddText(ImVec2(nodePos.x + 10, nodePos.y + 125), statusColor, status);
+    }
+
+    void Node::drawKeyPressNodeContent(ImVec2 nodePos, ImVec2 nodeSize) {
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        
+        // Key selection area (clickable)
+        ImVec2 keySelectPos = ImVec2(nodePos.x + 10, nodePos.y + 35);
+        ImVec2 keySelectSize = ImVec2(nodeSize.x - 20, 20);
+        ImVec2 keySelectMax = ImVec2(keySelectPos.x + keySelectSize.x, keySelectPos.y + keySelectSize.y);
+        
+        // Draw key selection background
+        ImU32 selectBgColor = IM_COL32(60, 80, 60, 255);
+        drawList->AddRectFilled(keySelectPos, keySelectMax, selectBgColor, 3.0f);
+        drawList->AddRect(keySelectPos, keySelectMax, IM_COL32(100, 120, 100, 255), 3.0f);
+        
+        // Draw key selection text
+        char keyText[64];
+        if (keyCode != 0) {
+            // Convert key code to readable string
+            const char* keyName = getKeyName(keyCode);
+            snprintf(keyText, sizeof(keyText), "Key: %s", keyName);
+        } else {
+            snprintf(keyText, sizeof(keyText), "Select Key...");
+        }
+        drawList->AddText(ImVec2(keySelectPos.x + 5, keySelectPos.y + 3), 
+                         IM_COL32(255, 255, 255, 255), keyText);
+        
+        // Check if key selection area is clicked
+        if (ImGui::IsMouseHoveringRect(keySelectPos, keySelectMax)) {
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+                // Request key selection popup through global NodeEditorWindow
+                printf("DEBUG: OnKeyPress node %d clicked, s_currentNodeEditor = %p\n", id, s_currentNodeEditor);
+                if (s_currentNodeEditor) {
+                    s_currentNodeEditor->openKeySelectionPopup(id);
+                    printf("DEBUG: Called openKeySelectionPopup for node %d\n", id);
+                } else {
+                    printf("ERROR: s_currentNodeEditor is null!\n");
+                }
+            }
+        }
+        
+        // Show current state
+        if (keyCode != 0) {
+            drawList->AddText(ImVec2(nodePos.x + 10, nodePos.y + 65), 
+                             IM_COL32(200, 200, 200, 255), "Event triggers on key press");
+        } else {
+            drawList->AddText(ImVec2(nodePos.x + 10, nodePos.y + 65), 
+                             IM_COL32(150, 150, 150, 255), "Click above to select key");
+        }
+    }
+
     bool Node::isImageFile(const std::string& extension) {
         std::string lowerExt = extension;
         std::transform(lowerExt.begin(), lowerExt.end(), lowerExt.begin(), ::tolower);
@@ -433,6 +990,32 @@ namespace NodeEditor {
                     imageFiles.push_back(directory + "/" + entry.path().filename().string());
                 }
             }
+        }
+    }
+
+    const char* Node::getKeyName(int keyCode) const {
+        switch (keyCode) {
+            case 87: return "W";
+            case 65: return "A";
+            case 83: return "S";
+            case 68: return "D";
+            case 32: return "Space";
+            case 13: return "Enter";
+            case 16: return "Shift";
+            case 17: return "Ctrl";
+            case 69: return "E";
+            case 70: return "F";
+            case 71: return "G";
+            case 72: return "H";
+            case 81: return "Q";
+            case 82: return "R";
+            case 84: return "T";
+            case 89: return "Y";
+            case 85: return "U";
+            case 73: return "I";
+            case 79: return "O";
+            case 80: return "P";
+            default: return "Unknown";
         }
     }
 
@@ -556,6 +1139,7 @@ namespace NodeEditor {
 
     void NodeEditorWindow::show(bool* open, SceneWindow* activeScene) {
         m_activeScene = activeScene;
+        s_currentNodeEditor = this;  // Set global pointer for Node access
         
         ImGui::SetNextWindowSize(ImVec2(800, 600), ImGuiCond_FirstUseEver);
         if (!ImGui::Begin("🔗 Node Editor", open, ImGuiWindowFlags_MenuBar)) {
@@ -584,6 +1168,18 @@ namespace NodeEditor {
                 }
                 ImGui::EndMenu();
             }
+            
+            if (ImGui::BeginMenu("Code")) {
+                if (ImGui::MenuItem("Generate Game Code")) {
+                    generateCodeFromNodes();
+                }
+                ImGui::Separator();
+                if (ImGui::MenuItem("Export Node Graph")) {
+                    exportNodeGraphAsCode();
+                }
+                ImGui::EndMenu();
+            }
+            
             ImGui::EndMenuBar();
         }
         
@@ -627,6 +1223,13 @@ namespace NodeEditor {
         drawConnections();
         drawConnectionInProgress();
         
+        // Handle pending popup requests
+        if (m_showKeySelectionPopup) {
+            printf("DEBUG: Opening key selection popup for node %d\n", m_keySelectionNodeId);
+            ImGui::OpenPopup("Select Key");
+            m_showKeySelectionPopup = false;
+        }
+        
         // Handle transform edit popups
         for (auto& node : m_nodes) {
             if (node->type == NodeType::Transform) {
@@ -636,6 +1239,83 @@ namespace NodeEditor {
                     ImGui::EndPopup();
                 }
             }
+        }
+        
+        // Entity selection popup for ParticleEffect nodes
+        if (ImGui::BeginPopup("Select Entity")) {
+            ImGui::Text("Select Target Entity:");
+            ImGui::Separator();
+            
+            // Option to clear selection
+            if (ImGui::Selectable("None")) {
+                if (m_entitySelectionNodeId != -1) {
+                    auto nodeIt = std::find_if(m_nodes.begin(), m_nodes.end(),
+                                             [this](const std::unique_ptr<Node>& node) {
+                                                 return node->id == m_entitySelectionNodeId;
+                                             });
+                    if (nodeIt != m_nodes.end()) {
+                        (*nodeIt)->associatedEntity = 0;
+                    }
+                }
+                ImGui::CloseCurrentPopup();
+            }
+            
+            // List all entities in the scene
+            auto entities = getSceneEntities();
+            for (const auto& entityPair : entities) {
+                EntityID entityId = entityPair.first;
+                const std::string& entityName = entityPair.second;
+                
+                if (ImGui::Selectable(entityName.c_str())) {
+                    if (m_entitySelectionNodeId != -1) {
+                        auto nodeIt = std::find_if(m_nodes.begin(), m_nodes.end(),
+                                                 [this](const std::unique_ptr<Node>& node) {
+                                                     return node->id == m_entitySelectionNodeId;
+                                                 });
+                        if (nodeIt != m_nodes.end()) {
+                            (*nodeIt)->associatedEntity = entityId;
+                        }
+                    }
+                    ImGui::CloseCurrentPopup();
+                }
+            }
+            
+            ImGui::EndPopup();
+        }
+        
+        // Key selection popup for OnKeyPress nodes
+        if (ImGui::BeginPopup("Select Key")) {
+            printf("DEBUG: Key selection popup is being drawn\n");
+            ImGui::Text("Select Key:");
+            ImGui::Separator();
+            
+            // Common keys
+            const struct { const char* name; int code; } commonKeys[] = {
+                {"W", 87}, {"A", 65}, {"S", 83}, {"D", 68},
+                {"Space", 32}, {"Enter", 13}, {"Shift", 16}, {"Ctrl", 17},
+                {"E", 69}, {"F", 70}, {"G", 71}, {"H", 72},
+                {"Q", 81}, {"R", 82}, {"T", 84}, {"Y", 89},
+                {"U", 85}, {"I", 73}, {"O", 79}, {"P", 80}
+            };
+            
+            for (const auto& key : commonKeys) {
+                if (ImGui::Selectable(key.name)) {
+                    printf("DEBUG: Key %s selected for node %d\n", key.name, m_keySelectionNodeId);
+                    if (m_keySelectionNodeId != -1) {
+                        auto nodeIt = std::find_if(m_nodes.begin(), m_nodes.end(),
+                                                 [this](const std::unique_ptr<Node>& node) {
+                                                     return node->id == m_keySelectionNodeId;
+                                                 });
+                        if (nodeIt != m_nodes.end()) {
+                            (*nodeIt)->keyCode = key.code;
+                            printf("DEBUG: Set keyCode %d on node %d\n", key.code, m_keySelectionNodeId);
+                        }
+                    }
+                    ImGui::CloseCurrentPopup();
+                }
+            }
+            
+            ImGui::EndPopup();
         }
         
         ImGui::End();
@@ -760,8 +1440,8 @@ namespace NodeEditor {
         
         // Scale controls
         ImGui::Text("Scale:");
-        ImGui::DragFloat("X##scale", &transformComponent->scale.x, 0.01f, 0.1f, 5.0f, "%.2f");
-        ImGui::DragFloat("Y##scale", &transformComponent->scale.y, 0.01f, 0.1f, 5.0f, "%.2f");
+        ImGui::DragFloat("X##scale", &transformComponent->scale.x, 0.01f, 0.01f, 50.0f, "%.3f");
+        ImGui::DragFloat("Y##scale", &transformComponent->scale.y, 0.01f, 0.01f, 50.0f, "%.3f");
         
         ImGui::Separator();
         
@@ -950,6 +1630,22 @@ namespace NodeEditor {
                             }
                         }
                         
+                        // For Entity nodes, check if clicking in the entity selection area
+                        if (node->type == NodeType::Entity) {
+                            // Entity selection area: 10px from left, 35px from top, width-20px wide, 20px high
+                            ImVec2 entitySelectPos = ImVec2(node->position.x + 10, node->position.y + 35);
+                            ImVec2 entitySelectSize = ImVec2(node->getNodeSize().x - 20, 20);
+                            ImVec2 entitySelectMax = ImVec2(entitySelectPos.x + entitySelectSize.x, entitySelectPos.y + entitySelectSize.y);
+                            
+                            if (relativePos.x >= entitySelectPos.x && relativePos.x <= entitySelectMax.x &&
+                                relativePos.y >= entitySelectPos.y && relativePos.y <= entitySelectMax.y) {
+                                clickedOnNodeControl = true;
+                                
+                                // Open entity selection popup
+                                openEntitySelectionPopup(node->id);
+                            }
+                        }
+                        
                         // Check if clicking on resize handle for already selected nodes
                         if (node->selected && node->isOnResizeHandle(relativePos)) {
                             m_resizing = true;
@@ -1080,6 +1776,54 @@ namespace NodeEditor {
             }
         }
         
+        // Handle Entity->EntitySpawner connections
+        if (m_activeScene && outputNode && inputNode && 
+            outputNode->type == NodeType::Entity && 
+            inputNode->type == NodeType::EntitySpawner) {
+            
+            EntityID entityId = outputNode->associatedEntity;
+            
+            if (entityId != 0) {
+                Scene* scene = m_activeScene->getScene().get();
+                if (scene) {
+                    // Find which pin was connected to determine behavior
+                    Pin* connectedInputPin = nullptr;
+                    for (auto& pin : inputNode->inputPins) {
+                        if (pin.id == inputPinId) {
+                            connectedInputPin = &pin;
+                            break;
+                        }
+                    }
+                    
+                    if (connectedInputPin && connectedInputPin->name == "Target") {
+                        // Entity connected to Target pin - this entity gains EntitySpawner component (spawning ability)
+                        if (!scene->hasComponent<EntitySpawner>(entityId)) {
+                            EntitySpawner spawner;
+                            spawner.clearTemplates(); // Start with no templates
+                            scene->addComponent<EntitySpawner>(entityId, spawner);
+                            printf("DEBUG: Added EntitySpawner component to entity %u (gained spawning ability)\n", entityId);
+                        }
+                        
+                    } else if (connectedInputPin && connectedInputPin->name == "Template") {
+                        // Entity connected to Template pin - this entity becomes the spawn template
+                        printf("DEBUG: Entity %u connected as template for EntitySpawner node %d\n", entityId, inputNode->id);
+                        
+                        // The EntitySpawner node now uses this entity as its template
+                        inputNode->templateEntityId = entityId;
+                        
+                        // Create template info for the EntitySpawner node
+                        std::string templateName = scene->getEntityName(entityId);
+                        if (templateName.empty()) {
+                            templateName = "Entity_" + std::to_string(entityId);
+                        }
+                        
+                        printf("DEBUG: EntitySpawner will use Entity %u (%s) as spawn template\n", 
+                               entityId, templateName.c_str());
+                    }
+                }
+            }
+        }
+        
         return connectionId;
     }
 
@@ -1181,6 +1925,90 @@ namespace NodeEditor {
         
         ImGui::Separator();
         
+        if (ImGui::BeginMenu("Entity Management")) {
+            if (ImGui::MenuItem("Entity Spawner")) {
+                createNode(NodeType::EntitySpawner, nodePos);
+                ImGui::CloseCurrentPopup();
+            }
+            if (ImGui::MenuItem("Entity Factory")) {
+                createNode(NodeType::EntityFactory, nodePos);
+                ImGui::CloseCurrentPopup();
+            }
+            if (ImGui::MenuItem("Spawn Entity")) {
+                createNode(NodeType::SpawnEntity, nodePos);
+                ImGui::CloseCurrentPopup();
+            }
+            if (ImGui::MenuItem("Destroy Entity")) {
+                createNode(NodeType::DestroyEntity, nodePos);
+                ImGui::CloseCurrentPopup();
+            }
+            if (ImGui::MenuItem("Entity Reference")) {
+                createNode(NodeType::EntityReference, nodePos);
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndMenu();
+        }
+        
+        if (ImGui::BeginMenu("Events & Input")) {
+            if (ImGui::BeginMenu("Keyboard Events")) {
+                if (ImGui::MenuItem("OnKeyPress")) {
+                    createNode(NodeType::OnKeyPress, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("OnKeyRelease")) {
+                    createNode(NodeType::OnKeyRelease, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndMenu();
+            }
+            
+            if (ImGui::BeginMenu("Mouse Events")) {
+                if (ImGui::MenuItem("OnMouseClick")) {
+                    createNode(NodeType::OnMouseClick, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("OnMouseHover")) {
+                    createNode(NodeType::OnMouseHover, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndMenu();
+            }
+            
+            if (ImGui::BeginMenu("Collision Events")) {
+                if (ImGui::MenuItem("OnCollision")) {
+                    createNode(NodeType::OnCollision, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("OnTriggerEnter")) {
+                    createNode(NodeType::OnTriggerEnter, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("OnTriggerExit")) {
+                    createNode(NodeType::OnTriggerExit, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndMenu();
+            }
+            
+            if (ImGui::BeginMenu("Entity Events")) {
+                if (ImGui::MenuItem("OnEntitySpawned")) {
+                    createNode(NodeType::OnEntitySpawned, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("OnEntityDestroyed")) {
+                    createNode(NodeType::OnEntityDestroyed, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndMenu();
+            }
+            
+            if (ImGui::MenuItem("Timer")) {
+                createNode(NodeType::TimerNode, nodePos);
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndMenu();
+        }
+        
         if (ImGui::BeginMenu("Player Components")) {
             if (ImGui::MenuItem("Player Controller")) {
                 createNode(NodeType::PlayerController, nodePos);
@@ -1204,6 +2032,374 @@ namespace NodeEditor {
             }
             if (ImGui::MenuItem("Player State")) {
                 createNode(NodeType::PlayerState, nodePos);
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndMenu();
+        }
+        
+        if (ImGui::BeginMenu("NPC & AI")) {
+            if (ImGui::BeginMenu("NPC Components")) {
+                if (ImGui::MenuItem("NPC Controller")) {
+                    createNode(NodeType::NPCController, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("NPC Dialogue")) {
+                    createNode(NodeType::NPCDialogue, nodePos);
+                    ImGui::CloseCurrentPopup();    
+                }
+                if (ImGui::MenuItem("NPC Interaction")) {
+                    createNode(NodeType::NPCInteraction, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndMenu();
+            }
+            
+            if (ImGui::BeginMenu("AI Components")) {
+                if (ImGui::MenuItem("AI Behavior")) {
+                    createNode(NodeType::AIBehavior, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("AI State Machine")) {
+                    createNode(NodeType::AIStateMachine, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("AI Pathfinding")) {
+                    createNode(NodeType::AIPathfinding, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndMenu();
+            }
+            ImGui::EndMenu();
+        }
+        
+        if (ImGui::BeginMenu("Environment")) {
+            if (ImGui::MenuItem("Environment Collider")) {
+                createNode(NodeType::EnvironmentCollider, nodePos);
+                ImGui::CloseCurrentPopup();
+            }
+            if (ImGui::MenuItem("Environment Trigger")) {
+                createNode(NodeType::EnvironmentTrigger, nodePos);
+                ImGui::CloseCurrentPopup();
+            }
+            if (ImGui::MenuItem("Environment Hazard")) {
+                createNode(NodeType::EnvironmentHazard, nodePos);
+                ImGui::CloseCurrentPopup();
+            }
+            if (ImGui::MenuItem("Environment Door")) {
+                createNode(NodeType::EnvironmentDoor, nodePos);
+                ImGui::CloseCurrentPopup();
+            }
+            if (ImGui::MenuItem("Environment Switch")) {
+                createNode(NodeType::EnvironmentSwitch, nodePos);
+                ImGui::CloseCurrentPopup();
+            }
+            if (ImGui::MenuItem("Environment Platform")) {
+                createNode(NodeType::EnvironmentPlatform, nodePos);
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndMenu();
+        }
+        
+        if (ImGui::BeginMenu("Audio & Effects")) {
+            if (ImGui::BeginMenu("Audio")) {
+                if (ImGui::MenuItem("Audio Source")) {
+                    createNode(NodeType::AudioSource, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("Audio Listener")) {
+                    createNode(NodeType::AudioListener, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("Play Sound")) {
+                    createNode(NodeType::PlaySound, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("Stop Sound")) {
+                    createNode(NodeType::StopSound, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndMenu();
+            }
+            
+            if (ImGui::BeginMenu("Visual Effects")) {
+                if (ImGui::MenuItem("Particle System")) {
+                    createNode(NodeType::ParticleSystem, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("Particle Emitter")) {
+                    createNode(NodeType::ParticleEmitter, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("Visual Effect")) {
+                    createNode(NodeType::VisualEffect, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("Light Source")) {
+                    createNode(NodeType::LightSource, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndMenu();
+            }
+            ImGui::EndMenu();
+        }
+        
+        if (ImGui::BeginMenu("UI Elements")) {
+            if (ImGui::MenuItem("UI Element")) {
+                createNode(NodeType::UIElement, nodePos);
+                ImGui::CloseCurrentPopup();
+            }
+            if (ImGui::MenuItem("UI Button")) {
+                createNode(NodeType::UIButton, nodePos);
+                ImGui::CloseCurrentPopup();
+            }
+            if (ImGui::MenuItem("UI Text")) {
+                createNode(NodeType::UIText, nodePos);
+                ImGui::CloseCurrentPopup();
+            }
+            if (ImGui::MenuItem("UI Image")) {
+                createNode(NodeType::UIImage, nodePos);
+                ImGui::CloseCurrentPopup();
+            }
+            if (ImGui::MenuItem("UI Health Bar")) {
+                createNode(NodeType::UIHealthBar, nodePos);
+                ImGui::CloseCurrentPopup();
+            }
+            if (ImGui::MenuItem("UI Inventory Slot")) {
+                createNode(NodeType::UIInventorySlot, nodePos);
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndMenu();
+        }
+        
+        if (ImGui::BeginMenu("Math & Logic")) {
+            if (ImGui::BeginMenu("Math Operations")) {
+                if (ImGui::MenuItem("Add")) {
+                    createNode(NodeType::MathAdd, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("Subtract")) {
+                    createNode(NodeType::MathSubtract, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("Multiply")) {
+                    createNode(NodeType::MathMultiply, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("Divide")) {
+                    createNode(NodeType::MathDivide, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("Min")) {
+                    createNode(NodeType::MathMin, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("Max")) {
+                    createNode(NodeType::MathMax, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("Clamp")) {
+                    createNode(NodeType::MathClamp, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("Lerp")) {
+                    createNode(NodeType::MathLerp, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndMenu();
+            }
+            
+            if (ImGui::BeginMenu("Vector Math")) {
+                if (ImGui::MenuItem("Distance")) {
+                    createNode(NodeType::MathDistance, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("Normalize")) {
+                    createNode(NodeType::MathNormalize, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("Dot Product")) {
+                    createNode(NodeType::MathDotProduct, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndMenu();
+            }
+            
+            if (ImGui::BeginMenu("Random")) {
+                if (ImGui::MenuItem("Random Float")) {
+                    createNode(NodeType::RandomFloat, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("Random Int")) {
+                    createNode(NodeType::RandomInt, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndMenu();
+            }
+            
+            if (ImGui::BeginMenu("Logic")) {
+                if (ImGui::MenuItem("AND")) {
+                    createNode(NodeType::LogicAND, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("OR")) {
+                    createNode(NodeType::LogicOR, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("NOT")) {
+                    createNode(NodeType::LogicNOT, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("Compare")) {
+                    createNode(NodeType::Compare, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndMenu();
+            }
+            ImGui::EndMenu();
+        }
+        
+        if (ImGui::BeginMenu("Flow Control")) {
+            if (ImGui::MenuItem("Branch")) {
+                createNode(NodeType::Branch, nodePos);
+                ImGui::CloseCurrentPopup();
+            }
+            if (ImGui::MenuItem("Sequence")) {
+                createNode(NodeType::Sequence, nodePos);
+                ImGui::CloseCurrentPopup();
+            }
+            if (ImGui::MenuItem("Parallel")) {
+                createNode(NodeType::Parallel, nodePos);
+                ImGui::CloseCurrentPopup();
+            }
+            if (ImGui::MenuItem("Delay")) {
+                createNode(NodeType::Delay, nodePos);
+                ImGui::CloseCurrentPopup();
+            }
+            if (ImGui::MenuItem("For Loop")) {
+                createNode(NodeType::ForLoop, nodePos);
+                ImGui::CloseCurrentPopup();
+            }
+            if (ImGui::MenuItem("While Loop")) {
+                createNode(NodeType::WhileLoop, nodePos);
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndMenu();
+        }
+        
+        if (ImGui::BeginMenu("Data")) {
+            if (ImGui::BeginMenu("Constants")) {
+                if (ImGui::MenuItem("Float")) {
+                    createNode(NodeType::ConstantFloat, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("Int")) {
+                    createNode(NodeType::ConstantInt, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("Bool")) {
+                    createNode(NodeType::ConstantBool, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("String")) {
+                    createNode(NodeType::ConstantString, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("Vector2")) {
+                    createNode(NodeType::ConstantVector2, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndMenu();
+            }
+            
+            if (ImGui::MenuItem("Variable")) {
+                createNode(NodeType::Variable, nodePos);
+                ImGui::CloseCurrentPopup();
+            }
+            if (ImGui::MenuItem("Global Variable")) {
+                createNode(NodeType::GlobalVariable, nodePos);
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndMenu();
+        }
+        
+        if (ImGui::BeginMenu("Physics")) {
+            if (ImGui::MenuItem("Apply Force")) {
+                createNode(NodeType::ApplyForce, nodePos);
+                ImGui::CloseCurrentPopup();
+            }
+            if (ImGui::MenuItem("Set Velocity")) {
+                createNode(NodeType::SetVelocity, nodePos);
+                ImGui::CloseCurrentPopup();
+            }
+            if (ImGui::MenuItem("Raycast")) {
+                createNode(NodeType::Raycast, nodePos);
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndMenu();
+        }
+        
+        if (ImGui::BeginMenu("Game Systems")) {
+            if (ImGui::BeginMenu("Game State")) {
+                if (ImGui::MenuItem("Save Game")) {
+                    createNode(NodeType::SaveGame, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("Load Game")) {
+                    createNode(NodeType::LoadGame, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("Scene Loader")) {
+                    createNode(NodeType::SceneLoader, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndMenu();
+            }
+            
+            if (ImGui::BeginMenu("Combat & Health")) {
+                if (ImGui::MenuItem("Deal Damage")) {
+                    createNode(NodeType::DealDamage, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("Heal Entity")) {
+                    createNode(NodeType::HealEntity, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("Check Health")) {
+                    createNode(NodeType::CheckHealth, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndMenu();
+            }
+            
+            if (ImGui::BeginMenu("Dialogue")) {
+                if (ImGui::MenuItem("Dialogue Node")) {
+                    createNode(NodeType::DialogueNode, nodePos);
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndMenu();
+            }
+            ImGui::EndMenu();
+        }
+        
+        if (ImGui::BeginMenu("Movement")) {
+            if (ImGui::MenuItem("Move Towards")) {
+                createNode(NodeType::MoveTowards, nodePos);
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndMenu();
+        }
+        
+        if (ImGui::BeginMenu("Debug")) {
+            if (ImGui::MenuItem("Print")) {
+                createNode(NodeType::Print, nodePos);
+                ImGui::CloseCurrentPopup();
+            }
+            if (ImGui::MenuItem("Debug")) {
+                createNode(NodeType::Debug, nodePos);
+                ImGui::CloseCurrentPopup();
+            }
+            if (ImGui::MenuItem("Comment")) {
+                createNode(NodeType::Comment, nodePos);
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndMenu();
@@ -1351,6 +2547,16 @@ namespace NodeEditor {
                     scene->addComponent<RigidBody>(entity, *std::static_pointer_cast<RigidBody>(componentNode->componentData));
                 }
                 break;
+            case NodeType::ParticleEffect:
+                if (!scene->hasComponent<ParticleEffect>(entity)) {
+                    scene->addComponent<ParticleEffect>(entity, *std::static_pointer_cast<ParticleEffect>(componentNode->componentData));
+                }
+                break;
+            case NodeType::EntitySpawner:
+                if (!scene->hasComponent<EntitySpawner>(entity)) {
+                    scene->addComponent<EntitySpawner>(entity, *std::static_pointer_cast<EntitySpawner>(componentNode->componentData));
+                }
+                break;
             default:
                 break;
         }
@@ -1425,6 +2631,17 @@ namespace NodeEditor {
                     scene->removeComponent<RigidBody>(entity);
                 }
                 break;
+            case NodeType::EntitySpawner:
+                if (scene->hasComponent<EntitySpawner>(entity)) {
+                    scene->removeComponent<EntitySpawner>(entity);
+                    printf("DEBUG: Removed EntitySpawner component from entity %u\n", entity);
+                }
+                break;
+            case NodeType::ParticleEffect:
+                if (scene->hasComponent<ParticleEffect>(entity)) {
+                    scene->removeComponent<ParticleEffect>(entity);
+                }
+                break;
             default:
                 break;
         }
@@ -1434,18 +2651,328 @@ namespace NodeEditor {
         switch (type) {
             case NodeType::Entity: return "Entity";
             case NodeType::SpriteComponent: return "Sprite";
+            case NodeType::Transform: return "Transform";
+            case NodeType::Rotation: return "Rotation";
+            case NodeType::Scale: return "Scale";
+            case NodeType::Collider: return "Collider";
+            case NodeType::RigidBody: return "RigidBody";
+            
+            // Player Components
             case NodeType::PlayerController: return "Controller";
             case NodeType::PlayerStats: return "Stats";
             case NodeType::PlayerPhysics: return "Physics";
             case NodeType::PlayerInventory: return "Inventory";
             case NodeType::PlayerAbilities: return "Abilities";
             case NodeType::PlayerState: return "State";
-            case NodeType::Transform: return "Transform";
-            case NodeType::Rotation: return "Rotation";
-            case NodeType::Scale: return "Scale";
-            case NodeType::Collider: return "Collider";
-            case NodeType::RigidBody: return "RigidBody";
+            
+            // NPC and AI Components
+            case NodeType::NPCController: return "NPC Controller";
+            case NodeType::AIBehavior: return "AI Behavior";
+            case NodeType::AIStateMachine: return "AI State Machine";
+            case NodeType::AIPathfinding: return "AI Pathfinding";
+            case NodeType::NPCDialogue: return "NPC Dialogue";
+            case NodeType::NPCInteraction: return "NPC Interaction";
+            
+            // Environment Components
+            case NodeType::EnvironmentCollider: return "Env Collider";
+            case NodeType::EnvironmentTrigger: return "Env Trigger";
+            case NodeType::EnvironmentHazard: return "Env Hazard";
+            case NodeType::EnvironmentDoor: return "Env Door";
+            case NodeType::EnvironmentSwitch: return "Env Switch";
+            case NodeType::EnvironmentPlatform: return "Env Platform";
+            
+            // Audio and Effects
+            case NodeType::AudioSource: return "Audio Source";
+            case NodeType::AudioListener: return "Audio Listener";
+            case NodeType::ParticleSystem: return "Particle System";
+            case NodeType::ParticleEmitter: return "Particle Emitter";
+            case NodeType::VisualEffect: return "Visual Effect";
+            case NodeType::LightSource: return "Light Source";
+            
+            // UI Components
+            case NodeType::UIElement: return "UI Element";
+            case NodeType::UIButton: return "UI Button";
+            case NodeType::UIText: return "UI Text";
+            case NodeType::UIImage: return "UI Image";
+            case NodeType::UIHealthBar: return "UI Health Bar";
+            case NodeType::UIInventorySlot: return "UI Inventory Slot";
+            
+            // Math nodes
+            case NodeType::MathAdd: return "Add";
+            case NodeType::MathSubtract: return "Subtract";
+            case NodeType::MathMultiply: return "Multiply";
+            case NodeType::MathDivide: return "Divide";
+            case NodeType::MathPower: return "Power";
+            case NodeType::MathSin: return "Sin";
+            case NodeType::MathCos: return "Cos";
+            case NodeType::MathAbs: return "Abs";
+            case NodeType::MathMin: return "Min";
+            case NodeType::MathMax: return "Max";
+            case NodeType::MathClamp: return "Clamp";
+            case NodeType::MathLerp: return "Lerp";
+            case NodeType::MathDistance: return "Distance";
+            case NodeType::MathNormalize: return "Normalize";
+            case NodeType::MathDotProduct: return "Dot Product";
+            case NodeType::RandomFloat: return "Random Float";
+            case NodeType::RandomInt: return "Random Int";
+            
+            // Logic nodes
+            case NodeType::LogicAND: return "AND";
+            case NodeType::LogicOR: return "OR";
+            case NodeType::LogicNOT: return "NOT";
+            case NodeType::LogicXOR: return "XOR";
+            case NodeType::Compare: return "Compare";
+            case NodeType::Branch: return "Branch";
+            case NodeType::Condition: return "Condition";
+            case NodeType::Switch: return "Switch";
+            
+            // Flow control
+            case NodeType::Sequence: return "Sequence";
+            case NodeType::Parallel: return "Parallel";
+            case NodeType::Delay: return "Delay";
+            case NodeType::Loop: return "Loop";
+            case NodeType::ForLoop: return "For Loop";
+            case NodeType::WhileLoop: return "While Loop";
+            
+            // Event nodes
+            case NodeType::EventTrigger: return "Event Trigger";
+            case NodeType::EventListener: return "Event Listener";
+            case NodeType::OnCollision: return "OnCollision";
+            case NodeType::OnKeyPress: return "OnKeyPress";
+            case NodeType::OnKeyRelease: return "OnKeyRelease";
+            case NodeType::OnMouseClick: return "OnMouseClick";
+            case NodeType::OnMouseHover: return "OnMouseHover";
+            case NodeType::OnTriggerEnter: return "OnTriggerEnter";
+            case NodeType::OnTriggerExit: return "OnTriggerExit";
+            case NodeType::OnEntityDestroyed: return "OnEntityDestroyed";
+            case NodeType::OnEntitySpawned: return "OnEntitySpawned";
+            case NodeType::TimerNode: return "Timer";
+            
+            // Data nodes
+            case NodeType::ConstantFloat: return "Float";
+            case NodeType::ConstantInt: return "Int";
+            case NodeType::ConstantString: return "String";
+            case NodeType::ConstantBool: return "Bool";
+            case NodeType::ConstantVector2: return "Vector2";
+            case NodeType::Variable: return "Variable";
+            case NodeType::GlobalVariable: return "Global Variable";
+            case NodeType::EntityReference: return "Entity Reference";
+            
+            // Game-specific nodes
+            case NodeType::MoveTowards: return "Move Towards";
+            case NodeType::FollowPath: return "Follow Path";
+            case NodeType::Animate: return "Animate";
+            case NodeType::PlaySound: return "Play Sound";
+            case NodeType::StopSound: return "Stop Sound";
+            case NodeType::SpawnEntity: return "Spawn Entity";
+            case NodeType::DestroyEntity: return "Destroy Entity";
+            case NodeType::EntitySpawner: return "Entity Spawner";
+            case NodeType::EntityFactory: return "Entity Factory";
+            case NodeType::ParticleEffect: return "Particle Effect";
+            
+            // Script and Behavior nodes
+            case NodeType::ScriptNode: return "Script Node";
+            case NodeType::BehaviorTree: return "Behavior Tree";
+            case NodeType::StateMachine: return "State Machine";
+            case NodeType::CustomScript: return "Custom Script";
+            
+            // Physics and Movement
+            case NodeType::ApplyForce: return "Apply Force";
+            case NodeType::SetVelocity: return "Set Velocity";
+            case NodeType::Raycast: return "Raycast";
+            case NodeType::OverlapCheck: return "Overlap Check";
+            case NodeType::PhysicsConstraint: return "Physics Constraint";
+            
+            // Game State and Management
+            case NodeType::SceneLoader: return "Scene Loader";
+            case NodeType::GameStateManager: return "Game State Manager";
+            case NodeType::SaveGame: return "Save Game";
+            case NodeType::LoadGame: return "Load Game";
+            case NodeType::CheckGameState: return "Check Game State";
+            
+            // Inventory and Items
+            case NodeType::ItemPickup: return "Item Pickup";
+            case NodeType::ItemDrop: return "Item Drop";
+            case NodeType::InventoryAdd: return "Inventory Add";
+            case NodeType::InventoryRemove: return "Inventory Remove";
+            case NodeType::InventoryCheck: return "Inventory Check";
+            
+            // Health and Combat
+            case NodeType::DealDamage: return "Deal Damage";
+            case NodeType::HealEntity: return "Heal Entity";
+            case NodeType::CheckHealth: return "Check Health";
+            case NodeType::ApplyStatusEffect: return "Apply Status Effect";
+            case NodeType::RemoveStatusEffect: return "Remove Status Effect";
+            
+            // Dialogue and Narrative
+            case NodeType::DialogueNode: return "Dialogue";
+            case NodeType::DialogueChoice: return "Dialogue Choice";
+            case NodeType::DialogueCondition: return "Dialogue Condition";
+            case NodeType::QuestStart: return "Quest Start";
+            case NodeType::QuestComplete: return "Quest Complete";
+            case NodeType::QuestCheck: return "Quest Check";
+            
+            // Utility nodes
+            case NodeType::Print: return "Print";
+            case NodeType::Debug: return "Debug";
+            case NodeType::Comment: return "Comment";
+            
             default: return "Unknown";
+        }
+    }
+
+    bool NodeEditorWindow::isECSComponentNode(NodeType type) const {
+        // Return true for node types that correspond to ECS components
+        switch (type) {
+            // Core components
+            case NodeType::SpriteComponent:
+            case NodeType::Transform:
+            case NodeType::Rotation:
+            case NodeType::Scale:
+            case NodeType::Collider:
+            case NodeType::RigidBody:
+            
+            // Player components
+            case NodeType::PlayerController:
+            case NodeType::PlayerStats:
+            case NodeType::PlayerPhysics:
+            case NodeType::PlayerInventory:
+            case NodeType::PlayerAbilities:
+            case NodeType::PlayerState:
+            
+            // NPC and AI components
+            case NodeType::NPCController:
+            case NodeType::AIBehavior:
+            case NodeType::AIStateMachine:
+            case NodeType::AIPathfinding:
+            case NodeType::NPCDialogue:
+            case NodeType::NPCInteraction:
+            
+            // Environment components
+            case NodeType::EnvironmentCollider:
+            case NodeType::EnvironmentTrigger:
+            case NodeType::EnvironmentHazard:
+            case NodeType::EnvironmentDoor:
+            case NodeType::EnvironmentSwitch:
+            case NodeType::EnvironmentPlatform:
+            
+            // Audio and Effects components
+            case NodeType::AudioSource:
+            case NodeType::AudioListener:
+            case NodeType::ParticleSystem:
+            case NodeType::ParticleEmitter:
+            case NodeType::VisualEffect:
+            case NodeType::LightSource:
+            
+            // UI components
+            case NodeType::UIElement:
+            case NodeType::UIButton:
+            case NodeType::UIText:
+            case NodeType::UIImage:
+            case NodeType::UIHealthBar:
+            case NodeType::UIInventorySlot:
+            
+            // Special components
+            case NodeType::ParticleEffect:
+            case NodeType::EntitySpawner:
+                return true;
+            
+            // Non-ECS node types (event nodes, logic nodes, math nodes, etc.)
+            case NodeType::Entity:
+            case NodeType::OnKeyPress:
+            case NodeType::OnKeyRelease:
+            case NodeType::OnMouseClick:
+            case NodeType::OnMouseHover:
+            case NodeType::OnCollision:
+            case NodeType::OnTriggerEnter:
+            case NodeType::OnTriggerExit:
+            case NodeType::OnEntityDestroyed:
+            case NodeType::OnEntitySpawned:
+            case NodeType::TimerNode:
+            case NodeType::EntityFactory:
+            case NodeType::MathAdd:
+            case NodeType::MathSubtract:
+            case NodeType::MathMultiply:
+            case NodeType::MathDivide:
+            case NodeType::MathPower:
+            case NodeType::MathSin:
+            case NodeType::MathCos:
+            case NodeType::MathAbs:
+            case NodeType::MathMin:
+            case NodeType::MathMax:
+            case NodeType::MathClamp:
+            case NodeType::MathLerp:
+            case NodeType::MathDistance:
+            case NodeType::MathNormalize:
+            case NodeType::MathDotProduct:
+            case NodeType::RandomFloat:
+            case NodeType::RandomInt:
+            case NodeType::LogicAND:
+            case NodeType::LogicOR:
+            case NodeType::LogicNOT:
+            case NodeType::LogicXOR:
+            case NodeType::Compare:
+            case NodeType::Branch:
+            case NodeType::Condition:
+            case NodeType::Switch:
+            case NodeType::Sequence:
+            case NodeType::Parallel:
+            case NodeType::Delay:
+            case NodeType::Loop:
+            case NodeType::ForLoop:
+            case NodeType::WhileLoop:
+            case NodeType::ConstantFloat:
+            case NodeType::ConstantInt:
+            case NodeType::ConstantString:
+            case NodeType::ConstantBool:
+            case NodeType::ConstantVector2:
+            case NodeType::Variable:
+            case NodeType::GlobalVariable:
+            case NodeType::EntityReference:
+            case NodeType::MoveTowards:
+            case NodeType::FollowPath:
+            case NodeType::Animate:
+            case NodeType::PlaySound:
+            case NodeType::StopSound:
+            case NodeType::SpawnEntity:
+            case NodeType::DestroyEntity:
+            case NodeType::ScriptNode:
+            case NodeType::BehaviorTree:
+            case NodeType::StateMachine:
+            case NodeType::CustomScript:
+            case NodeType::ApplyForce:
+            case NodeType::SetVelocity:
+            case NodeType::Raycast:
+            case NodeType::OverlapCheck:
+            case NodeType::PhysicsConstraint:
+            case NodeType::SceneLoader:
+            case NodeType::GameStateManager:
+            case NodeType::SaveGame:
+            case NodeType::LoadGame:
+            case NodeType::CheckGameState:
+            case NodeType::ItemPickup:
+            case NodeType::ItemDrop:
+            case NodeType::InventoryAdd:
+            case NodeType::InventoryRemove:
+            case NodeType::InventoryCheck:
+            case NodeType::DealDamage:
+            case NodeType::HealEntity:
+            case NodeType::CheckHealth:
+            case NodeType::ApplyStatusEffect:
+            case NodeType::RemoveStatusEffect:
+            case NodeType::DialogueNode:
+            case NodeType::DialogueChoice:
+            case NodeType::DialogueCondition:
+            case NodeType::QuestStart:
+            case NodeType::QuestComplete:
+            case NodeType::QuestCheck:
+            case NodeType::Print:
+            case NodeType::Debug:
+            case NodeType::Comment:
+                return false;
+                
+            default:
+                return false;
         }
     }    void NodeEditorWindow::applyNodesToEntity(EntityID entity, Scene* scene) {
         if (!scene) return;
@@ -1460,6 +2987,42 @@ namespace NodeEditor {
         // Find connected component nodes and apply them to the entity
         for (auto& node : m_nodes) {
             if (node->type == NodeType::Entity) continue;
+            
+            // Special handling for EntitySpawner nodes
+            if (node->type == NodeType::EntitySpawner) {
+                // Apply EntitySpawner component to the entity
+                if (!scene->hasComponent<EntitySpawner>(entity)) {
+                    EntitySpawner spawner;
+                    spawner.clearTemplates();
+                    
+                    // If this EntitySpawner node has a template entity, configure it
+                    if (node->templateEntityId != 0) {
+                        std::string templateName = scene->getEntityName(node->templateEntityId);
+                        if (templateName.empty()) {
+                            templateName = "Entity_" + std::to_string(node->templateEntityId);
+                        }
+                        
+                        // Create template based on the template entity
+                        EntitySpawner::SpawnTemplate newTemplate(templateName, "", ::Vector2(20, 0), ::Vector2(100, 0));
+                        newTemplate.scale = 1.0f;
+                        newTemplate.lifeTime = 0.0f;
+                        newTemplate.hasCollider = scene->hasComponent<Collider>(node->templateEntityId);
+                        newTemplate.hasRigidBody = scene->hasComponent<RigidBody>(node->templateEntityId);
+                        
+                        // Store the template entity ID for spawning
+                        newTemplate.spriteFile = "TEMPLATE_ENTITY_" + std::to_string(node->templateEntityId);
+                        
+                        spawner.templates.push_back(newTemplate);
+                        spawner.selectedTemplate = 0;
+                        
+                        printf("DEBUG: EntitySpawner applied to entity %u with template from entity %u (%s)\n", 
+                               entity, node->templateEntityId, templateName.c_str());
+                    }
+                    
+                    scene->addComponent<EntitySpawner>(entity, spawner);
+                }
+                continue;
+            }
             
             // Check if this component node is connected to an entity
             bool isConnected = false;
@@ -1484,6 +3047,10 @@ namespace NodeEditor {
                 applyComponentToEntity(entity, scene, node.get());
             }
         }
+        
+        // Save the current node layout for this entity
+        saveNodeLayout(entity);
+        printf("DEBUG: Applied nodes to entity %u and saved layout\n", entity);
     }
 
     void NodeEditorWindow::loadEntityAsNodes(EntityID entity, Scene* scene) {
@@ -1521,7 +3088,11 @@ namespace NodeEditor {
             
             // Create component nodes based on what the entity has
             std::vector<int> componentNodeIds;
+            
+            printf("DEBUG: Checking components for entity %u\n", entity);
+            
           if (scene->hasComponent<Sprite>(entity)) {
+            printf("DEBUG: Found Sprite component\n");
             int nodeId = createNode(NodeType::SpriteComponent, ImVec2(300, 50));
             // Copy the actual sprite component data from the entity
             auto& entitySprite = scene->getComponent<Sprite>(entity);
@@ -1533,22 +3104,79 @@ namespace NodeEditor {
         }
         
         if (scene->hasComponent<PlayerController>(entity)) {
+            printf("DEBUG: Found PlayerController component\n");
             int nodeId = createNode(NodeType::PlayerController, ImVec2(300, 120));
+            // Copy component data
+            auto& entityController = scene->getComponent<PlayerController>(entity);
+            auto nodeController = std::static_pointer_cast<PlayerController>(m_nodeMap[nodeId]->componentData);
+            if (nodeController) {
+                *nodeController = entityController;
+            }
             componentNodeIds.push_back(nodeId);
         }
         
         if (scene->hasComponent<PlayerStats>(entity)) {
+            printf("DEBUG: Found PlayerStats component\n");
             int nodeId = createNode(NodeType::PlayerStats, ImVec2(300, 190));
+            // Copy component data
+            auto& entityStats = scene->getComponent<PlayerStats>(entity);
+            auto nodeStats = std::static_pointer_cast<PlayerStats>(m_nodeMap[nodeId]->componentData);
+            if (nodeStats) {
+                *nodeStats = entityStats;
+            }
             componentNodeIds.push_back(nodeId);
         }
         
         if (scene->hasComponent<PlayerPhysics>(entity)) {
+            printf("DEBUG: Found PlayerPhysics component\n");
             int nodeId = createNode(NodeType::PlayerPhysics, ImVec2(300, 260));
+            // Copy component data
+            auto& entityPhysics = scene->getComponent<PlayerPhysics>(entity);
+            auto nodePhysics = std::static_pointer_cast<PlayerPhysics>(m_nodeMap[nodeId]->componentData);
+            if (nodePhysics) {
+                *nodePhysics = entityPhysics;
+            }
+            componentNodeIds.push_back(nodeId);
+        }
+        
+        if (scene->hasComponent<PlayerInventory>(entity)) {
+            printf("DEBUG: Found PlayerInventory component\n");
+            int nodeId = createNode(NodeType::PlayerInventory, ImVec2(300, 330));
+            // Copy component data
+            auto& entityInventory = scene->getComponent<PlayerInventory>(entity);
+            auto nodeInventory = std::static_pointer_cast<PlayerInventory>(m_nodeMap[nodeId]->componentData);
+            if (nodeInventory) {
+                *nodeInventory = entityInventory;
+            }
+            componentNodeIds.push_back(nodeId);
+        }
+        
+        if (scene->hasComponent<PlayerAbilities>(entity)) {
+            printf("DEBUG: Found PlayerAbilities component\n");
+            int nodeId = createNode(NodeType::PlayerAbilities, ImVec2(300, 400));
+            // Copy component data
+            auto& entityAbilities = scene->getComponent<PlayerAbilities>(entity);
+            auto nodeAbilities = std::static_pointer_cast<PlayerAbilities>(m_nodeMap[nodeId]->componentData);
+            if (nodeAbilities) {
+                *nodeAbilities = entityAbilities;
+            }
+            componentNodeIds.push_back(nodeId);
+        }
+        
+        if (scene->hasComponent<PlayerState>(entity)) {
+            printf("DEBUG: Found PlayerState component\n");
+            int nodeId = createNode(NodeType::PlayerState, ImVec2(300, 470));
+            // Copy component data
+            auto& entityState = scene->getComponent<PlayerState>(entity);
+            auto nodeState = std::static_pointer_cast<PlayerState>(m_nodeMap[nodeId]->componentData);
+            if (nodeState) {
+                *nodeState = entityState;
+            }
             componentNodeIds.push_back(nodeId);
         }
         
         if (scene->hasComponent<Transform>(entity)) {
-            int nodeId = createNode(NodeType::Transform, ImVec2(300, 330));
+            int nodeId = createNode(NodeType::Transform, ImVec2(300, 540));
             // Copy the actual transform component data from the entity
             auto& entityTransform = scene->getComponent<Transform>(entity);
             auto nodeTransform = std::static_pointer_cast<Transform>(m_nodeMap[nodeId]->componentData);
@@ -1559,6 +3187,7 @@ namespace NodeEditor {
         }
         
         if (scene->hasComponent<Rotation>(entity)) {
+            printf("DEBUG: Found Rotation component\n");
             try {
                 int nodeId = createNode(NodeType::Rotation, ImVec2(500, 100));
                 
@@ -1577,6 +3206,7 @@ namespace NodeEditor {
         }
         
         if (scene->hasComponent<Scale>(entity)) {
+            printf("DEBUG: Found Scale component\n");
             try {
                 int nodeId = createNode(NodeType::Scale, ImVec2(500, 200));
                 
@@ -1595,9 +3225,55 @@ namespace NodeEditor {
         }
         
         if (scene->hasComponent<Collider>(entity)) {
-            int nodeId = createNode(NodeType::Collider, ImVec2(300, 400));
+            printf("DEBUG: Found Collider component\n");
+            int nodeId = createNode(NodeType::Collider, ImVec2(300, 610));
+            // Copy component data
+            auto& entityCollider = scene->getComponent<Collider>(entity);
+            auto nodeCollider = std::static_pointer_cast<Collider>(m_nodeMap[nodeId]->componentData);
+            if (nodeCollider) {
+                *nodeCollider = entityCollider;
+            }
             componentNodeIds.push_back(nodeId);
         }
+        
+        if (scene->hasComponent<RigidBody>(entity)) {
+            printf("DEBUG: Found RigidBody component\n");
+            int nodeId = createNode(NodeType::RigidBody, ImVec2(300, 680));
+            // Copy component data
+            auto& entityRigidBody = scene->getComponent<RigidBody>(entity);
+            auto nodeRigidBody = std::static_pointer_cast<RigidBody>(m_nodeMap[nodeId]->componentData);
+            if (nodeRigidBody) {
+                *nodeRigidBody = entityRigidBody;
+            }
+            componentNodeIds.push_back(nodeId);
+        }
+        
+        if (scene->hasComponent<ParticleEffect>(entity)) {
+            printf("DEBUG: Found ParticleEffect component\n");
+            int nodeId = createNode(NodeType::ParticleEffect, ImVec2(300, 750));
+            // Copy the actual ParticleEffect component data from the entity
+            auto& entityParticle = scene->getComponent<ParticleEffect>(entity);
+            auto nodeParticle = std::static_pointer_cast<ParticleEffect>(m_nodeMap[nodeId]->componentData);
+            if (nodeParticle) {
+                *nodeParticle = entityParticle;
+            }
+            componentNodeIds.push_back(nodeId);
+        }
+        
+        if (scene->hasComponent<EntitySpawner>(entity)) {
+            printf("DEBUG: Found EntitySpawner component\n");
+            int nodeId = createNode(NodeType::EntitySpawner, ImVec2(300, 820));
+            // Copy the actual EntitySpawner component data from the entity
+            auto& entitySpawner = scene->getComponent<EntitySpawner>(entity);
+            auto nodeSpawner = std::static_pointer_cast<EntitySpawner>(m_nodeMap[nodeId]->componentData);
+            if (nodeSpawner) {
+                *nodeSpawner = entitySpawner; // Copy all spawner data including templates
+            }
+            componentNodeIds.push_back(nodeId);
+        }
+        
+        printf("DEBUG: Found %zu components for entity %u\n", componentNodeIds.size(), entity);
+        
           // Create connections with proper pin matching
         printf("DEBUG: Starting connection creation, %zu component nodes\n", componentNodeIds.size());
         for (int componentNodeId : componentNodeIds) {
@@ -1612,64 +3288,39 @@ namespace NodeEditor {
                 printf("DEBUG: Entity has %zu output pins, component has %zu input pins\n", 
                        entityNode->outputPins.size(), componentNode->inputPins.size());
                 
-                // Find the correct output pin based on component type
-                int outputPinId = -1;
-                int entityNodeIdForPin = entityNode->id;
+                // Use the single Entity output pin for all connections
+                int outputPinId = entityNode->id * 100 + 1; // Single Entity pin
+                printf("DEBUG: Using Entity pin %d for connection to %s\n", outputPinId, getNodeTypeName(componentNode->type).c_str());
                 
-                switch (componentNode->type) {
-                    case NodeType::SpriteComponent:
-                        outputPinId = entityNodeIdForPin * 100 + 2; // Sprite pin
-                        printf("DEBUG: Using Sprite pin %d\n", outputPinId);
-                        break;
-                    case NodeType::PlayerController:
-                    case NodeType::PlayerStats:
-                    case NodeType::PlayerPhysics:
-                    case NodeType::PlayerInventory:
-                    case NodeType::PlayerAbilities:
-                    case NodeType::PlayerState:
-                        outputPinId = entityNodeIdForPin * 100 + 3; // Player pin
-                        printf("DEBUG: Using Player pin %d\n", outputPinId);
-                        break;
-                    case NodeType::Transform:
-                    case NodeType::Rotation:
-                    case NodeType::Scale:
-                    case NodeType::Collider:
-                    case NodeType::RigidBody:
-                        outputPinId = entityNodeIdForPin * 100 + 1; // Transform pin
-                        printf("DEBUG: Using Transform pin %d\n", outputPinId);
-                        break;
-                }
+                printf("DEBUG: Creating connection from pin %d to pin %d\n", outputPinId, componentNode->inputPins[0].id);
+                int connectionId = m_nextConnectionId++;
+                m_connections.emplace_back(connectionId, outputPinId, componentNode->inputPins[0].id);
                 
-                if (outputPinId != -1) {
-                    printf("DEBUG: Creating connection from pin %d to pin %d\n", outputPinId, componentNode->inputPins[0].id);
-                    int connectionId = m_nextConnectionId++;
-                    m_connections.emplace_back(connectionId, outputPinId, componentNode->inputPins[0].id);
-                    
-                    // Mark pins as connected
-                    bool outputPinFound = false, inputPinFound = false;
-                    for (auto& node : m_nodes) {
-                        if (auto pin = node->getPinById(outputPinId)) {
-                            pin->connected = true;
-                            pin->connectedPinId = componentNode->inputPins[0].id;
-                            outputPinFound = true;
-                        }
-                        if (auto pin = node->getPinById(componentNode->inputPins[0].id)) {
-                            pin->connected = true;
-                            pin->connectedPinId = outputPinId;
-                            inputPinFound = true;
-                        }
+                // Mark pins as connected
+                bool outputPinFound = false, inputPinFound = false;
+                for (auto& node : m_nodes) {
+                    if (auto pin = node->getPinById(outputPinId)) {
+                        pin->connected = true;
+                        pin->connectedPinId = componentNode->inputPins[0].id;
+                        outputPinFound = true;
                     }
-                    printf("DEBUG: Pin marking - Output found: %s, Input found: %s\n", 
-                           outputPinFound ? "true" : "false", inputPinFound ? "true" : "false");
-                } else {
-                    printf("WARNING: No valid output pin found for component type\n");
+                    if (auto pin = node->getPinById(componentNode->inputPins[0].id)) {
+                        pin->connected = true;
+                        pin->connectedPinId = outputPinId;
+                        inputPinFound = true;
+                    }
                 }
+                printf("DEBUG: Pin marking - Output found: %s, Input found: %s\n", 
+                       outputPinFound ? "true" : "false", inputPinFound ? "true" : "false");
             } else {
                 printf("WARNING: Entity has no output pins or component has no input pins\n");
             }
         }
         
         printf("DEBUG: loadEntityAsNodes completed successfully\n");
+        
+        // Load saved node layout to restore positions
+        loadNodeLayout(entity);
         
         } catch (const std::exception& e) {
             printf("ERROR: Exception in loadEntityAsNodes: %s\n", e.what());
@@ -1692,51 +3343,94 @@ namespace NodeEditor {
             }
         }
         
-        if (!outputPin || !inputPin || !outputNode || !inputNode) return false;
+        if (!outputPin || !inputPin || !outputNode || !inputNode) {
+            printf("DEBUG: canConnect failed - missing pins or nodes. OutputPin: %p, InputPin: %p, OutputNode: %p, InputNode: %p\n", 
+                   outputPin, inputPin, outputNode, inputNode);
+            return false;
+        }
+        
+        printf("DEBUG: canConnect attempt - %s (%s pin) -> %s (%s pin)\n", 
+               getNodeTypeName(outputNode->type).c_str(), outputPin->name.c_str(),
+               getNodeTypeName(inputNode->type).c_str(), inputPin->name.c_str());
         
         // Can't connect node to itself
         if (outputNode == inputNode) return false;
         
-        // Output must be from Entity node, input must be to Component node
-        if (outputNode->type != NodeType::Entity) return false;
-        if (inputNode->type == NodeType::Entity) return false;
-        
         // Check if input pin is already connected
         if (inputPin->connected) return false;
         
-        // Check component-specific connection rules
-        // Entity output pins: Transform (id+1), Sprite (id+2), Player (id+3)
-        int entityNodeId = outputNode->id;
-        int transformPinId = entityNodeId * 100 + 1;
-        int spritePinId = entityNodeId * 100 + 2;
-        int playerPinId = entityNodeId * 100 + 3;
-        
-        switch (inputNode->type) {
-            case NodeType::SpriteComponent:
-                // Sprite components can only connect to the Sprite output pin
-                return (outputPinId == spritePinId);
-                
-            case NodeType::PlayerController:
-            case NodeType::PlayerStats:
-            case NodeType::PlayerPhysics:
-            case NodeType::PlayerInventory:
-            case NodeType::PlayerAbilities:
-            case NodeType::PlayerState:
-                // Player components can only connect to the Player output pin
-                return (outputPinId == playerPinId);
-                
-            case NodeType::Transform:
-            case NodeType::Rotation:
-            case NodeType::Scale:
-            case NodeType::Collider:
-            case NodeType::RigidBody:
-                // Basic components can only connect to the Transform output pin
-                return (outputPinId == transformPinId);
-                
-            default:
-                // Unknown component type
-                return false;
+        // Special handling for new node types (EntitySpawner, EntityFactory, ParticleEffect)
+        if (outputNode->type == NodeType::EntitySpawner || outputNode->type == NodeType::EntityFactory) {
+            // EntitySpawner/EntityFactory can connect to Entity nodes to give them spawning behavior
+            if (inputNode->type == NodeType::Entity) {
+                // Allow Event connections (to trigger spawning) and Entity connections (to provide template)
+                return (outputPin->dataType == PinDataType::Event && inputPin->dataType == PinDataType::Event) ||
+                       (outputPin->dataType == PinDataType::Entity && inputPin->dataType == PinDataType::Entity);
+            }
+            // EntitySpawner/EntityFactory can connect to ParticleEffect nodes
+            if (inputNode->type == NodeType::ParticleEffect) {
+                // Check if connecting Entity output to Target Entity input (now handled by dropdown)
+                return (outputPin->dataType == PinDataType::Event && inputPin->dataType == PinDataType::Event);
+            }
+            // Allow connections to component nodes for backward compatibility
+            if (inputNode->type != NodeType::EntitySpawner && inputNode->type != NodeType::EntityFactory) {
+                return true; // Allow EntitySpawner/Factory to connect to components
+            }
+            return false;
         }
+        
+        // Original Entity node connection rules
+        if (outputNode->type == NodeType::Entity) {
+            // Allow Entity nodes to connect to EntitySpawner nodes to gain spawning ability
+            if (inputNode->type == NodeType::EntitySpawner) {
+                // Entity(1) -> EntitySpawner: Entity(1) gains spawning ability
+                printf("DEBUG: Entity->EntitySpawner connection check. OutputPin dataType: %d, InputPin dataType: %d\n", 
+                       static_cast<int>(outputPin->dataType), static_cast<int>(inputPin->dataType));
+                bool canConnect = outputPin->dataType == PinDataType::Entity && inputPin->dataType == PinDataType::Entity;
+                printf("DEBUG: Entity->EntitySpawner connection result: %s\n", canConnect ? "ALLOWED" : "DENIED");
+                return canConnect;
+            }
+            
+            // Allow Entity to connect to other Entities that have spawning ability
+            if (inputNode->type == NodeType::Entity) {
+                // Entity(2) -> Entity(1): Entity(2) spawns through Entity(1) if Entity(1) has spawning ability
+                // We'll check spawning ability in createConnection
+                bool canConnect = outputPin->dataType == PinDataType::Entity && inputPin->dataType == PinDataType::Entity;
+                printf("DEBUG: Entity->Entity connection result: %s\n", canConnect ? "ALLOWED" : "DENIED");
+                return canConnect;
+            }
+            
+            // Don't allow Entity to connect to ParticleEffect directly (use dropdown instead)
+            if (inputNode->type == NodeType::ParticleEffect) {
+                return false;
+            }
+            
+            // Allow Entity nodes to connect to all component types through the single Entity pin
+            // The Entity pin can connect to any component that accepts Entity input
+            switch (inputNode->type) {
+                case NodeType::SpriteComponent:
+                case NodeType::Transform:
+                case NodeType::Rotation:
+                case NodeType::Scale:
+                case NodeType::Collider:
+                case NodeType::RigidBody:
+                case NodeType::PlayerController:
+                case NodeType::PlayerStats:
+                case NodeType::PlayerPhysics:
+                case NodeType::PlayerInventory:
+                case NodeType::PlayerAbilities:
+                case NodeType::PlayerState:
+                    // All component nodes accept Entity input through their Entity input pin
+                    return outputPin->dataType == PinDataType::Entity && inputPin->dataType == PinDataType::Entity;
+                    
+                default:
+                    // Unknown component type - don't allow connection
+                    return false;
+            }
+        }
+        
+        // For other node types, allow connections if data types match
+        return outputPin->dataType == inputPin->dataType;
     }
     
     bool NodeEditorWindow::wouldCreateCycle(int outputPinId, int inputPinId) {
@@ -1776,6 +3470,1212 @@ namespace NodeEditor {
                 printf("DEBUG: Node component data changed, updating entity %d\n", connectedEntity);
                 applyComponentToEntity(connectedEntity, scene, node);
             }
+        }
+    }
+    
+    void Node::setupNodeAppearance(NodeType nodeType) {
+        switch (nodeType) {
+            case NodeType::SpriteComponent:
+                headerColor = IM_COL32(70, 180, 70, 255);   // Green
+                description = "Sprite rendering component";
+                minSize = ImVec2(200, 120);
+                size = ImVec2(240, 160);
+                break;
+                
+            case NodeType::Transform:
+                headerColor = IM_COL32(180, 70, 70, 255);   // Red
+                description = "Position, rotation, and scale";
+                minSize = ImVec2(200, 140);
+                size = ImVec2(240, 140);
+                break;
+                
+            case NodeType::Collider:
+                headerColor = IM_COL32(180, 180, 70, 255);  // Yellow
+                description = "Collision detection component";
+                break;
+                
+            case NodeType::RigidBody:
+                headerColor = IM_COL32(70, 70, 180, 255);   // Blue
+                description = "Physics simulation component";
+                break;
+                
+            // Player components
+            case NodeType::PlayerController:
+            case NodeType::PlayerStats:
+            case NodeType::PlayerPhysics:
+            case NodeType::PlayerInventory:
+            case NodeType::PlayerAbilities:
+            case NodeType::PlayerState:
+                headerColor = IM_COL32(180, 70, 180, 255);  // Purple
+                description = "Player-specific component";
+                break;
+                
+            // Math nodes
+            case NodeType::MathAdd:
+            case NodeType::MathSubtract:
+            case NodeType::MathMultiply:
+            case NodeType::MathDivide:
+            case NodeType::MathSin:
+            case NodeType::MathCos:
+            case NodeType::MathAbs:
+            case NodeType::MathMin:
+            case NodeType::MathMax:
+            case NodeType::MathClamp:
+            case NodeType::MathLerp:
+                headerColor = IM_COL32(100, 150, 100, 255); // Dark green
+                description = "Mathematical operation";
+                break;
+                
+            // Logic nodes
+            case NodeType::LogicAND:
+            case NodeType::LogicOR:
+            case NodeType::LogicXOR:
+            case NodeType::LogicNOT:
+            case NodeType::Branch:
+                headerColor = IM_COL32(150, 100, 100, 255); // Dark red
+                description = "Logical operation";
+                break;
+                
+            // Constant nodes
+            case NodeType::ConstantFloat:
+            case NodeType::ConstantInt:
+            case NodeType::ConstantBool:
+            case NodeType::ConstantString:
+            case NodeType::ConstantVector2:
+                headerColor = IM_COL32(100, 100, 150, 255); // Dark blue
+                description = "Constant value";
+                break;
+                
+            // Event nodes
+            case NodeType::OnKeyPress:
+            case NodeType::OnMouseClick:
+            case NodeType::OnCollision:
+                headerColor = IM_COL32(150, 150, 100, 255); // Dark yellow
+                description = "Event trigger";
+                break;
+                
+            // Utility nodes
+            case NodeType::Print:
+                headerColor = IM_COL32(120, 120, 120, 255); // Gray
+                description = "Debug output";
+                break;
+                
+            // Entity creation nodes
+            case NodeType::EntitySpawner:
+                headerColor = IM_COL32(70, 130, 200, 255);  // Blue
+                description = "Spawns entities from templates";
+                minSize = ImVec2(160, 120);
+                size = ImVec2(180, 140);
+                break;
+                
+            case NodeType::EntityFactory:
+                headerColor = IM_COL32(50, 150, 200, 255);  // Light blue
+                description = "Creates new entities dynamically";
+                minSize = ImVec2(160, 120);
+                size = ImVec2(180, 140);
+                break;
+                
+            case NodeType::ParticleEffect:
+                headerColor = IM_COL32(255, 140, 0, 255);   // Orange
+                description = "Adds particle effects to entities";
+                minSize = ImVec2(160, 120);
+                size = ImVec2(180, 140);
+                break;
+                
+            case NodeType::Comment:
+                headerColor = IM_COL32(80, 80, 80, 255);    // Dark gray
+                description = "Comment node";
+                minSize = ImVec2(200, 100);
+                size = ImVec2(200, 100);
+                break;
+                
+            default:
+                headerColor = IM_COL32(100, 100, 100, 255); // Default gray
+                description = "Unknown node type";
+                break;
+        }
+    }
+    
+    void Node::createComponentData(NodeType nodeType) {
+        switch (nodeType) {
+            case NodeType::SpriteComponent:
+                componentData = std::make_shared<Sprite>();
+                break;
+            case NodeType::Transform:
+                componentData = std::make_shared<Transform>();
+                break;
+            case NodeType::Collider:
+                componentData = std::make_shared<Collider>();
+                break;
+            case NodeType::RigidBody:
+                componentData = std::make_shared<RigidBody>();
+                break;
+            case NodeType::PlayerController:
+                componentData = std::make_shared<PlayerController>();
+                break;
+            case NodeType::PlayerStats:
+                componentData = std::make_shared<PlayerStats>();
+                break;
+            case NodeType::PlayerPhysics:
+                componentData = std::make_shared<PlayerPhysics>();
+                break;
+            case NodeType::PlayerInventory:
+                componentData = std::make_shared<PlayerInventory>();
+                break;
+            case NodeType::PlayerAbilities:
+                componentData = std::make_shared<PlayerAbilities>();
+                break;
+            case NodeType::PlayerState:
+                componentData = std::make_shared<PlayerState>();
+                break;
+            case NodeType::ParticleEffect:
+                componentData = std::make_shared<ParticleEffect>();
+                break;
+            default:
+                // Non-component nodes don't have component data
+                break;
+        }
+    }
+
+    std::vector<std::pair<EntityID, std::string>> NodeEditorWindow::getSceneEntities() const {
+        std::vector<std::pair<EntityID, std::string>> entities;
+        
+        if (m_activeScene && m_activeScene->getScene()) {
+            auto scene = m_activeScene->getScene();
+            auto allEntities = scene->getAllLivingEntities();
+            
+            for (EntityID entity : allEntities) {
+                std::string entityName = scene->getEntityName(entity);
+                if (entityName.empty()) {
+                    entityName = "Entity " + std::to_string(entity);
+                }
+                entities.emplace_back(entity, entityName);
+            }
+            
+            // Sort by entity ID for consistent ordering
+            std::sort(entities.begin(), entities.end(), 
+                     [](const std::pair<EntityID, std::string>& a, const std::pair<EntityID, std::string>& b) {
+                         return a.first < b.first;
+                     });
+        }
+        
+        return entities;
+    }
+
+    void NodeEditorWindow::openEntitySelectionPopup(int nodeId) {
+        m_entitySelectionNodeId = nodeId;
+        m_showEntitySelectionPopup = true;
+        ImGui::OpenPopup("Select Entity");
+    }
+
+    void NodeEditorWindow::openKeySelectionPopup(int nodeId) {
+        printf("DEBUG: openKeySelectionPopup called for node %d\n", nodeId);
+        m_keySelectionNodeId = nodeId;
+        m_showKeySelectionPopup = true;
+        printf("DEBUG: Set key selection request for node %d\n", nodeId);
+    }
+
+    const char* NodeEditorWindow::getKeyName(int keyCode) const {
+        switch (keyCode) {
+            case 87: return "W";
+            case 65: return "A"; 
+            case 83: return "S";
+            case 68: return "D";
+            case 32: return "Space";
+            case 13: return "Enter";
+            case 16: return "Shift";
+            case 17: return "Ctrl";
+            case 69: return "E";
+            case 70: return "F";
+            case 71: return "G";
+            case 72: return "H";
+            case 81: return "Q";
+            case 82: return "R";
+            case 84: return "T";
+            case 89: return "Y";
+            case 85: return "U";
+            case 73: return "I";
+            case 79: return "O";
+            case 80: return "P";
+            default: return "Unknown";
+        }
+    }
+    
+    
+    void NodeEditorWindow::setCodeRefreshCallback(CodeRefreshCallback callback) {
+        m_codeRefreshCallback = callback;
+    }
+    
+    void NodeEditorWindow::saveNodeLayout(EntityID entity) {
+        try {
+            std::filesystem::create_directories("node_layouts");
+            std::string layoutFile = getLayoutFilePath(entity);
+            
+            std::ofstream file(layoutFile);
+            if (!file.is_open()) {
+                printf("ERROR: Failed to open layout file for writing: %s\n", layoutFile.c_str());
+                return;
+            }
+            
+            // Save node positions and types
+            file << "# Node Layout for Entity " << entity << "\n";
+            file << "nodes=" << m_nodes.size() << "\n";
+            
+            for (const auto& node : m_nodes) {
+                file << "node_id=" << node->id << "\n";
+                file << "node_type=" << static_cast<int>(node->type) << "\n";
+                file << "node_name=" << node->name << "\n";
+                file << "position_x=" << node->position.x << "\n";
+                file << "position_y=" << node->position.y << "\n";
+                file << "associated_entity=" << node->associatedEntity << "\n";
+                
+                // Save additional node-specific data
+                if (node->type == NodeType::OnKeyPress) {
+                    file << "key_code=" << node->keyCode << "\n";
+                }
+                
+                file << "---\n";
+            }
+            
+            // Save connections
+            file << "connections=" << m_connections.size() << "\n";
+            for (const auto& connection : m_connections) {
+                file << "connection_id=" << connection.id << "\n";
+                file << "output_pin=" << connection.outputPinId << "\n";
+                file << "input_pin=" << connection.inputPinId << "\n";
+                file << "---\n";
+            }
+            
+            file.close();
+            printf("DEBUG: Saved node layout for entity %u to %s\n", entity, layoutFile.c_str());
+            
+        } catch (const std::exception& e) {
+            printf("ERROR: Exception saving node layout: %s\n", e.what());
+        }
+    }
+    
+    void NodeEditorWindow::loadNodeLayout(EntityID entity) {
+        try {
+            std::string layoutFile = getLayoutFilePath(entity);
+            
+            if (!std::filesystem::exists(layoutFile)) {
+                printf("DEBUG: No saved layout found for entity %u\n", entity);
+                return;
+            }
+            
+            std::ifstream file(layoutFile);
+            if (!file.is_open()) {
+                printf("ERROR: Failed to open layout file for reading: %s\n", layoutFile.c_str());
+                return;
+            }
+            
+            std::string line;
+            std::vector<std::tuple<int, NodeType, std::string, ImVec2, EntityID, int>> savedNodes; // Added keyCode as 6th element
+            std::vector<std::tuple<int, int, int>> savedConnections;
+            
+            // Parse saved nodes
+            while (std::getline(file, line)) {
+                if (line.substr(0, 6) == "nodes=") {
+                    int nodeCount = std::stoi(line.substr(6));
+                    printf("DEBUG: Loading %d nodes from layout\n", nodeCount);
+                    
+                    for (int i = 0; i < nodeCount; i++) {
+                        int nodeId = 0, nodeType = 0, keyCode = -1; // Default keyCode to -1 (not set)
+                        std::string nodeName;
+                        float posX = 0, posY = 0;
+                        EntityID assocEntity = 0;
+                        
+                        // Read node properties
+                        while (std::getline(file, line) && line != "---") {
+                            if (line.substr(0, 8) == "node_id=") {
+                                nodeId = std::stoi(line.substr(8));
+                            }
+                            else if (line.substr(0, 10) == "node_type=") {
+                                nodeType = std::stoi(line.substr(10));
+                            }
+                            else if (line.substr(0, 10) == "node_name=") {
+                                nodeName = line.substr(10);
+                            }
+                            else if (line.substr(0, 11) == "position_x=") {
+                                posX = std::stof(line.substr(11));
+                            }
+                            else if (line.substr(0, 11) == "position_y=") {
+                                posY = std::stof(line.substr(11));
+                            }
+                            else if (line.substr(0, 18) == "associated_entity=") {
+                                assocEntity = std::stoul(line.substr(18));
+                            }
+                            else if (line.substr(0, 9) == "key_code=") {
+                                keyCode = std::stoi(line.substr(9));
+                            }
+                        }
+                        
+                        savedNodes.emplace_back(nodeId, static_cast<NodeType>(nodeType), nodeName, ImVec2(posX, posY), assocEntity, keyCode);
+                        printf("DEBUG: Parsed node: %s (type %d) at (%.1f, %.1f), keyCode=%d\n", 
+                               nodeName.c_str(), nodeType, posX, posY, keyCode);
+                    }
+                    break;
+                }
+            }
+            
+            // Parse saved connections
+            while (std::getline(file, line)) {
+                if (line.substr(0, 12) == "connections=") {
+                    int connectionCount = std::stoi(line.substr(12));
+                    printf("DEBUG: Loading %d connections from layout\n", connectionCount);
+                    
+                    for (int i = 0; i < connectionCount; i++) {
+                        int connectionId = 0, outputPin = 0, inputPin = 0;
+                        
+                        if (std::getline(file, line) && line.substr(0, 14) == "connection_id=") {
+                            connectionId = std::stoi(line.substr(14));
+                        }
+                        if (std::getline(file, line) && line.substr(0, 11) == "output_pin=") {
+                            outputPin = std::stoi(line.substr(11));
+                        }
+                        if (std::getline(file, line) && line.substr(0, 10) == "input_pin=") {
+                            inputPin = std::stoi(line.substr(10));
+                        }
+                        
+                        // Skip separator
+                        std::getline(file, line); // "---"
+                        
+                        savedConnections.emplace_back(connectionId, outputPin, inputPin);
+                    }
+                    break;
+                }
+            }
+            
+            file.close();
+            
+            // Apply saved layout to current nodes and create missing nodes
+            for (const auto& [savedId, savedType, savedName, savedPos, savedEntity, savedKeyCode] : savedNodes) {
+                bool nodeFound = false;
+                
+                // First, try to find existing node to restore position and properties
+                for (auto& currentNode : m_nodes) {
+                    if (currentNode->type == savedType && 
+                        (savedType == NodeType::Entity ? currentNode->associatedEntity == savedEntity : true)) {
+                        currentNode->position = savedPos;
+                        if (savedType == NodeType::OnKeyPress && savedKeyCode != -1) {
+                            currentNode->keyCode = savedKeyCode;
+                        }
+                        printf("DEBUG: Restored position (%.1f, %.1f) for existing %s node\n", 
+                               savedPos.x, savedPos.y, savedName.c_str());
+                        nodeFound = true;
+                        break;
+                    }
+                }
+                
+                // If node wasn't found and it's a non-ECS node type, create it
+                if (!nodeFound && !isECSComponentNode(savedType)) {
+                    printf("DEBUG: Creating missing non-ECS node: %s (type %d)\n", savedName.c_str(), static_cast<int>(savedType));
+                    int newNodeId = createNode(savedType, savedPos);
+                    
+                    // Restore specific properties for the created node
+                    if (newNodeId != -1 && m_nodeMap.count(newNodeId)) {
+                        Node* newNode = m_nodeMap[newNodeId];
+                        if (savedType == NodeType::OnKeyPress && savedKeyCode != -1) {
+                            newNode->keyCode = savedKeyCode;
+                            printf("DEBUG: Restored keyCode %d for OnKeyPress node\n", savedKeyCode);
+                        }
+                        if (savedType == NodeType::Entity && savedEntity != 0) {
+                            newNode->associatedEntity = savedEntity;
+                            printf("DEBUG: Restored associated entity %u for Entity node\n", savedEntity);
+                        }
+                    }
+                }
+            }
+            
+            printf("SUCCESS: Loaded node layout for entity %u\n", entity);
+            
+        } catch (const std::exception& e) {
+            printf("ERROR: Exception loading node layout: %s\n", e.what());
+        }
+    }
+    
+    std::string NodeEditorWindow::getLayoutFilePath(EntityID entity) const {
+        return "node_layouts/entity_" + std::to_string(entity) + "_layout.txt";
+    }
+
+    void NodeEditorWindow::generateCodeFromNodes() {
+        if (m_nodes.empty()) {
+            printf("INFO: No nodes to generate code from\n");
+            return;
+        }
+        
+        printf("INFO: Generating C++ code from %zu nodes\n", m_nodes.size());
+        saveGeneratedCodeToFiles();
+    }
+    
+    void NodeEditorWindow::exportNodeGraphAsCode() {
+        generateCodeFromNodes();
+    }
+    
+    std::string NodeEditorWindow::generateEntitySpawnerCode() {
+        std::stringstream code;
+        
+        code << "#pragma once\n\n";
+        code << "#include \"../components/Components.h\"\n";
+        code << "#include \"../scene/Scene.h\"\n";
+        code << "#include \"../core/Engine.h\"\n\n";
+        code << "// Auto-generated from Node Editor\n";
+        code << "// This file contains EntitySpawner systems created visually\n\n";
+        code << "class GeneratedEntitySpawners {\n";
+        code << "public:\n";
+        code << "    static void setupAllSpawners(Scene* scene) {\n";
+        code << "        if (!scene) return;\n\n";
+        
+        // Find all EntitySpawner nodes and generate setup code
+        int spawnerCount = 0;
+        for (const auto& node : m_nodes) {
+            if (node->type == NodeType::EntitySpawner) {
+                spawnerCount++;
+                
+                // Find connected entity nodes
+                EntityID targetEntity = 0;
+                EntityID templateEntity = 0;
+                
+                for (const auto& connection : m_connections) {
+                    // Check if this spawner node is connected
+                    for (const auto& inputPin : node->inputPins) {
+                        if (inputPin.id == connection.inputPinId) {
+                            // Find the connected output node
+                            for (const auto& otherNode : m_nodes) {
+                                for (const auto& outputPin : otherNode->outputPins) {
+                                    if (outputPin.id == connection.outputPinId && otherNode->type == NodeType::Entity) {
+                                        if (inputPin.name == "Target") {
+                                            targetEntity = otherNode->associatedEntity;
+                                        } else if (inputPin.name == "Template") {
+                                            templateEntity = otherNode->associatedEntity;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                code << "        // EntitySpawner " << spawnerCount << "\n";
+                if (targetEntity != 0) {
+                    code << "        setupEntitySpawner" << spawnerCount << "(scene, " << targetEntity;
+                    if (templateEntity != 0) {
+                        code << ", " << templateEntity;
+                    }
+                    code << ");\n\n";
+                }
+            }
+        }
+        
+        code << "    }\n\n";
+        
+        // Generate individual spawner setup methods
+        spawnerCount = 0;
+        for (const auto& node : m_nodes) {
+            if (node->type == NodeType::EntitySpawner) {
+                spawnerCount++;
+                
+                code << "private:\n";
+                code << "    static void setupEntitySpawner" << spawnerCount << "(Scene* scene, EntityID targetEntity";
+                
+                // Check if we have a template entity
+                bool hasTemplate = false;
+                for (const auto& connection : m_connections) {
+                    for (const auto& inputPin : node->inputPins) {
+                        if (inputPin.id == connection.inputPinId && inputPin.name == "Template") {
+                            hasTemplate = true;
+                            break;
+                        }
+                    }
+                    if (hasTemplate) break;
+                }
+                
+                if (hasTemplate) {
+                    code << ", EntityID templateEntity";
+                }
+                code << ") {\n";
+                
+                code << "        if (!scene->hasComponent<EntitySpawner>(targetEntity)) {\n";
+                code << "            EntitySpawner spawner;\n";
+                code << "            spawner.clearTemplates();\n";
+                code << "            \n";
+                
+                if (hasTemplate) {
+                    code << "            // Create template from template entity\n";
+                    code << "            std::string templateName = scene->getEntityName(templateEntity);\n";
+                    code << "            if (templateName.empty()) {\n";
+                    code << "                templateName = \"Entity_\" + std::to_string(templateEntity);\n";
+                    code << "            }\n";
+                    code << "            \n";
+                    code << "            EntitySpawner::SpawnTemplate newTemplate(templateName, \"\", Vector2(20, 0), Vector2(100, 0));\n";
+                    code << "            newTemplate.scale = 1.0f;\n";
+                    code << "            newTemplate.lifeTime = 0.0f;\n";
+                    code << "            newTemplate.hasCollider = scene->hasComponent<Collider>(templateEntity);\n";
+                    code << "            newTemplate.hasRigidBody = scene->hasComponent<RigidBody>(templateEntity);\n";
+                    code << "            newTemplate.spriteFile = \"TEMPLATE_ENTITY_\" + std::to_string(templateEntity);\n";
+                    code << "            \n";
+                    code << "            spawner.templates.push_back(newTemplate);\n";
+                    code << "            spawner.selectedTemplate = 0;\n";
+                } else {
+                    code << "            // Default arrow template\n";
+                    code << "            spawner.addTemplate(\"Arrow\", \"arrow.png\", Vector2(20, 0), Vector2(100, 0));\n";
+                }
+                
+                code << "            \n";
+                code << "            scene->addComponent<EntitySpawner>(targetEntity, spawner);\n";
+                code << "        }\n";
+                code << "    }\n\n";
+            }
+        }
+        
+        code << "};\n\n";
+        code << "// Usage: Call GeneratedEntitySpawners::setupAllSpawners(scene) in your game initialization\n";
+        
+        return code.str();
+    }
+    
+    std::string NodeEditorWindow::generateComponentSystemCode() {
+        std::stringstream code;
+        
+        code << "#pragma once\n\n";
+        code << "#include \"../components/Components.h\"\n";
+        code << "#include \"../scene/Scene.h\"\n\n";
+        code << "// Auto-generated from Node Editor\n";
+        code << "// This file contains component systems created visually\n\n";
+        code << "class GeneratedComponentSystems {\n";
+        code << "public:\n";
+        code << "    static void setupAllComponents(Scene* scene) {\n";
+        code << "        if (!scene) return;\n\n";
+        
+        // Find all Entity nodes and their connected components
+        int entityCount = 0;
+        for (const auto& node : m_nodes) {
+            if (node->type == NodeType::Entity && node->associatedEntity != 0) {
+                entityCount++;
+                
+                code << "        // Entity " << entityCount << ": " << node->name << "\n";
+                code << "        setupEntity" << entityCount << "(scene, " << node->associatedEntity << ");\n\n";
+            }
+        }
+        
+        code << "    }\n\n";
+        
+        // Generate individual entity setup methods
+        entityCount = 0;
+        for (const auto& node : m_nodes) {
+            if (node->type == NodeType::Entity && node->associatedEntity != 0) {
+                entityCount++;
+                
+                code << "private:\n";
+                code << "    static void setupEntity" << entityCount << "(Scene* scene, EntityID entity) {\n";
+                code << "        // Components for " << node->name << "\n";
+                
+                // Find all components connected to this entity
+                std::vector<std::string> components;
+                for (const auto& connection : m_connections) {
+                    // Check if this is an output from our entity node
+                    for (const auto& outputPin : node->outputPins) {
+                        if (outputPin.id == connection.outputPinId) {
+                            // Find the connected component node
+                            for (const auto& componentNode : m_nodes) {
+                                for (const auto& inputPin : componentNode->inputPins) {
+                                    if (inputPin.id == connection.inputPinId) {
+                                        std::string componentType = this->getNodeTypeName(componentNode->type);
+                                        components.push_back(componentType);
+                                        
+                                        // Generate component-specific setup code
+                                        switch (componentNode->type) {
+                                            case NodeType::SpriteComponent:
+                                                code << "        if (!scene->hasComponent<Sprite>(entity)) {\n";
+                                                code << "            Sprite sprite;\n";
+                                                code << "            sprite.visible = true;\n";
+                                                code << "            sprite.layer = 1;\n";
+                                                code << "            scene->addComponent<Sprite>(entity, sprite);\n";
+                                                code << "        }\n";
+                                                break;
+                                                
+                                            case NodeType::Transform:
+                                                code << "        if (!scene->hasComponent<Transform>(entity)) {\n";
+                                                code << "            Transform transform;\n";
+                                                code << "            transform.position = Vector2(0, 0);\n";
+                                                code << "            transform.scale = Vector2(1, 1);\n";
+                                                code << "            transform.rotation = 0.0f;\n";
+                                                code << "            scene->addComponent<Transform>(entity, transform);\n";
+                                                code << "        }\n";
+                                                break;
+                                                
+                                            case NodeType::PlayerController:
+                                                code << "        if (!scene->hasComponent<PlayerController>(entity)) {\n";
+                                                code << "            scene->addComponent<PlayerController>(entity, PlayerController());\n";
+                                                code << "            // Auto-add required components\n";
+                                                code << "            if (!scene->hasComponent<PlayerStats>(entity)) {\n";
+                                                code << "                scene->addComponent<PlayerStats>(entity, PlayerStats());\n";
+                                                code << "            }\n";
+                                                code << "            if (!scene->hasComponent<PlayerPhysics>(entity)) {\n";
+                                                code << "                scene->addComponent<PlayerPhysics>(entity, PlayerPhysics());\n";
+                                                code << "            }\n";
+                                                code << "        }\n";
+                                                break;
+                                                
+                                            case NodeType::Collider:
+                                                code << "        if (!scene->hasComponent<Collider>(entity)) {\n";
+                                                code << "            Collider collider;\n";
+                                                code << "            collider.size = Vector2(32, 32);\n";
+                                                code << "            scene->addComponent<Collider>(entity, collider);\n";
+                                                code << "        }\n";
+                                                break;
+                                                
+                                            case NodeType::RigidBody:
+                                                code << "        if (!scene->hasComponent<RigidBody>(entity)) {\n";
+                                                code << "            scene->addComponent<RigidBody>(entity, RigidBody());\n";
+                                                code << "        }\n";
+                                                break;
+                                                
+                                            default:
+                                                code << "        // " << componentType << " component setup\n";
+                                                break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                if (components.empty()) {
+                    code << "        // No components connected to this entity\n";
+                }
+                
+                code << "    }\n\n";
+            }
+        }
+        
+        code << "};\n\n";
+        code << "// Usage: Call GeneratedComponentSystems::setupAllComponents(scene) in your game initialization\n";
+        
+        return code.str();
+    }
+
+    std::string NodeEditorWindow::generateEventSystemCode() {
+        std::stringstream code;
+        
+        code << "#pragma once\n\n";
+        code << "#include \"../components/Components.h\"\n";
+        code << "#include \"../scene/Scene.h\"\n";
+        code << "#include \"../core/Engine.h\"\n";
+        code << "#include \"../input/InputManager.h\"\n\n";
+        code << "// Auto-generated from Node Editor\n";
+        code << "// Event systems for input handling and game events\n\n";
+        code << "class GeneratedEventSystems {\n";
+        code << "public:\n";
+        code << "    static void setupAllEvents(Scene* scene) {\n";
+        code << "        if (!scene) return;\n\n";
+        
+        // Count event nodes for setup
+        int keyEventCount = 0;
+        int mouseEventCount = 0;
+        int collisionEventCount = 0;
+        
+        for (const auto& node : m_nodes) {
+            if (node->type == NodeType::OnKeyPress) keyEventCount++;
+            else if (node->type == NodeType::OnMouseClick) mouseEventCount++;
+            else if (node->type == NodeType::OnCollision) collisionEventCount++;
+        }
+        
+        code << "        // Event system setup from Node Editor design\n";
+        code << "        printf(\"INFO: Setting up event systems - %d key events, %d mouse events, %d collision events\\n\", " 
+             << keyEventCount << ", " << mouseEventCount << ", " << collisionEventCount << ");\n";
+        code << "    }\n\n";
+        
+        code << "    static void updateEvents(Scene* scene, float deltaTime) {\n";
+        code << "        if (!scene) return;\n\n";
+        code << "        auto& engine = Engine::getInstance();\n";
+        code << "        auto* inputManager = engine.getInputManager();\n";
+        code << "        if (!inputManager) return;\n\n";
+        
+        // Generate OnKeyPress event handlers with actual logic
+        bool hasKeyEvents = false;
+        for (const auto& node : m_nodes) {
+            if (node->type == NodeType::OnKeyPress) {
+                if (!hasKeyEvents) {
+                    code << "        // OnKeyPress event handling from Node Editor\n";
+                    hasKeyEvents = true;
+                }
+                
+                code << "        // Key " << getKeyName(node->keyCode) << " (" << node->keyCode << ") event handler\n";
+                code << "        if (inputManager->isKeyPressed(" << node->keyCode << ")) {\n";
+                
+                // Find connected entities and generate specific actions
+                bool foundConnections = false;
+                for (const auto& connection : m_connections) {
+                    for (const auto& inputPin : node->inputPins) {
+                        if (inputPin.id == connection.inputPinId) {
+                            // Find the connected entity
+                            for (const auto& otherNode : m_nodes) {
+                                if (otherNode->type == NodeType::Entity) {
+                                    for (const auto& outputPin : otherNode->outputPins) {
+                                        if (outputPin.id == connection.outputPinId) {
+                                            foundConnections = true;
+                                            EntityID targetEntity = otherNode->associatedEntity;
+                                            code << "            // Action for entity " << targetEntity << " (" << otherNode->name << ")\n";
+                                            code << "            EntityID entity = " << targetEntity << ";\n";
+                                            code << "            if (scene->isEntityValid(entity)) {\n";
+                                            
+                                            // Generate specific actions based on connected components
+                                            generateKeyPressActions(code, targetEntity, otherNode.get());
+                                            
+                                            code << "            }\n";
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                if (!foundConnections) {
+                    code << "            printf(\"DEBUG: Key " << getKeyName(node->keyCode) << " pressed but no entities connected\\n\");\n";
+                }
+                
+                code << "        }\n\n";
+            }
+        }
+        
+        // Generate OnMouseClick handlers
+        bool hasMouseEvents = false;
+        for (const auto& node : m_nodes) {
+            if (node->type == NodeType::OnMouseClick) {
+                if (!hasMouseEvents) {
+                    code << "        // OnMouseClick event handling from Node Editor\n";
+                    hasMouseEvents = true;
+                }
+                
+                code << "        // Mouse click event handler\n";
+                code << "        if (inputManager->isMouseButtonPressed(0)) { // Left mouse button\n";
+                code << "            Vector2 mousePos = inputManager->getMousePosition();\n";
+                code << "            printf(\"INFO: Mouse clicked at (%.2f, %.2f)\\n\", mousePos.x, mousePos.y);\n";
+                code << "            // Add mouse click logic here based on connected nodes\n";
+                code << "        }\n\n";
+            }
+        }
+        
+        // Generate OnCollision handlers
+        bool hasCollisionEvents = false;
+        for (const auto& node : m_nodes) {
+            if (node->type == NodeType::OnCollision) {
+                if (!hasCollisionEvents) {
+                    code << "        // OnCollision event handling from Node Editor\n";
+                    hasCollisionEvents = true;
+                }
+                
+                code << "        // Collision detection for entities\n";
+                code << "        auto entities = scene->getAllLivingEntities();\n";
+                code << "        for (EntityID entity : entities) {\n";
+                code << "            if (scene->hasComponent<Collider>(entity)) {\n";
+                code << "                // Check for collisions and trigger collision events\n";
+                code << "                // This would integrate with the physics system\n";
+                code << "            }\n";
+                code << "        }\n\n";
+            }
+        }
+        
+        if (!hasKeyEvents && !hasMouseEvents && !hasCollisionEvents) {
+            code << "        // No event nodes found in Node Editor design\n";
+        }
+        
+        code << "    }\n\n";
+        code << "private:\n";
+        code << "    // Helper method to apply movement to entity\n";
+        code << "    static void applyMovement(Scene* scene, EntityID entity, float deltaX, float deltaY, float speed) {\n";
+        code << "        if (scene->hasComponent<Transform>(entity)) {\n";
+        code << "            auto& transform = scene->getComponent<Transform>(entity);\n";
+        code << "            transform.position.x += deltaX * speed;\n";
+        code << "            transform.position.y += deltaY * speed;\n";
+        code << "        }\n";
+        code << "    }\n";
+        code << "};\n\n";
+        
+        return code.str();
+    }
+
+    void NodeEditorWindow::generateKeyPressActions(std::stringstream& code, EntityID entityId, Node* entityNode) {
+        // Analyze what components this entity has to generate appropriate actions
+        bool hasPlayerController = false;
+        bool hasTransform = false;
+        bool hasSprite = false;
+        bool hasEntitySpawner = false;
+        
+        // Check connected components
+        for (const auto& connection : m_connections) {
+            for (const auto& node : m_nodes) {
+                if (node->type != NodeType::Entity) {
+                    for (const auto& inputPin : node->inputPins) {
+                        if (inputPin.id == connection.inputPinId) {
+                            for (const auto& outputPin : entityNode->outputPins) {
+                                if (outputPin.id == connection.outputPinId) {
+                                    switch (node->type) {
+                                        case NodeType::PlayerController:
+                                            hasPlayerController = true;
+                                            break;
+                                        case NodeType::Transform:
+                                            hasTransform = true;
+                                            break;
+                                        case NodeType::SpriteComponent:
+                                            hasSprite = true;
+                                            break;
+                                        case NodeType::EntitySpawner:
+                                            hasEntitySpawner = true;
+                                            break;
+                                        default:
+                                            break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Generate actions based on components
+        if (hasPlayerController) {
+            code << "                // Player movement actions\n";
+            code << "                if (scene->hasComponent<PlayerController>(entity)) {\n";
+            code << "                    auto& controller = scene->getComponent<PlayerController>(entity);\n";
+            code << "                    float moveSpeed = controller.speed * deltaTime;\n";
+            code << "                    \n";
+            code << "                    // Apply directional movement based on key\n";
+            code << "                    switch (" << getKeyCodeFromNode(entityNode) << ") {\n";
+            code << "                        case 87: // W key - move up\n";
+            code << "                            applyMovement(scene, entity, 0, -moveSpeed, 1.0f);\n";
+            code << "                            break;\n";
+            code << "                        case 83: // S key - move down\n";
+            code << "                            applyMovement(scene, entity, 0, moveSpeed, 1.0f);\n";
+            code << "                            break;\n";
+            code << "                        case 65: // A key - move left\n";
+            code << "                            applyMovement(scene, entity, -moveSpeed, 0, 1.0f);\n";
+            code << "                            break;\n";
+            code << "                        case 68: // D key - move right\n";
+            code << "                            applyMovement(scene, entity, moveSpeed, 0, 1.0f);\n";
+            code << "                            break;\n";
+            code << "                        case 32: // Space key - jump or action\n";
+            code << "                            controller.jumpPressed = true;\n";
+            code << "                            printf(\"INFO: Player jump action triggered\\n\");\n";
+            code << "                            break;\n";
+            code << "                        default:\n";
+            code << "                            printf(\"INFO: Key action for player entity %u\\n\", entity);\n";
+            code << "                            break;\n";
+            code << "                    }\n";
+            code << "                }\n";
+        }
+        
+        if (hasEntitySpawner) {
+            code << "                // Entity spawning actions\n";
+            code << "                if (scene->hasComponent<EntitySpawner>(entity)) {\n";
+            code << "                    auto& spawner = scene->getComponent<EntitySpawner>(entity);\n";
+            code << "                    // Trigger spawning on key press\n";
+            code << "                    spawner.shouldSpawn = true;\n";
+            code << "                    spawner.lastSpawnTime = 0.0f; // Force immediate spawn\n";
+            code << "                    printf(\"INFO: Spawner triggered by key press\\n\");\n";
+            code << "                }\n";
+        }
+        
+        if (hasTransform && !hasPlayerController) {
+            code << "                // Basic transform movement\n";
+            code << "                if (scene->hasComponent<Transform>(entity)) {\n";
+            code << "                    float moveSpeed = 100.0f * deltaTime;\n";
+            code << "                    switch (" << getKeyCodeFromNode(entityNode) << ") {\n";
+            code << "                        case 87: // W\n";
+            code << "                            applyMovement(scene, entity, 0, -moveSpeed, 1.0f);\n";
+            code << "                            break;\n";
+            code << "                        case 83: // S\n";
+            code << "                            applyMovement(scene, entity, 0, moveSpeed, 1.0f);\n";
+            code << "                            break;\n";
+            code << "                        case 65: // A\n";
+            code << "                            applyMovement(scene, entity, -moveSpeed, 0, 1.0f);\n";
+            code << "                            break;\n";
+            code << "                        case 68: // D\n";
+            code << "                            applyMovement(scene, entity, moveSpeed, 0, 1.0f);\n";
+            code << "                            break;\n";
+            code << "                        default:\n";
+            code << "                            printf(\"INFO: Transform action for entity %u\\n\", entity);\n";
+            code << "                            break;\n";
+            code << "                    }\n";
+            code << "                }\n";
+        }
+        
+        if (hasSprite) {
+            code << "                // Sprite-related actions (visual feedback)\n";
+            code << "                if (scene->hasComponent<Sprite>(entity)) {\n";
+            code << "                    auto& sprite = scene->getComponent<Sprite>(entity);\n";
+            code << "                    // Could change sprite appearance, animate, etc.\n";
+            code << "                    printf(\"INFO: Sprite action triggered for entity %u\\n\", entity);\n";
+            code << "                }\n";
+        }
+        
+        // Default action if no specific components
+        if (!hasPlayerController && !hasEntitySpawner && !hasTransform && !hasSprite) {
+            code << "                printf(\"INFO: Generic key action for entity %u\\n\", entity);\n";
+        }
+    }
+
+    int NodeEditorWindow::getKeyCodeFromNode(Node* entityNode) {
+        // Find connected OnKeyPress nodes to get the key code
+        for (const auto& connection : m_connections) {
+            for (const auto& node : m_nodes) {
+                if (node->type == NodeType::OnKeyPress) {
+                    for (const auto& inputPin : node->inputPins) {
+                        if (inputPin.id == connection.inputPinId) {
+                            for (const auto& outputPin : entityNode->outputPins) {
+                                if (outputPin.id == connection.outputPinId) {
+                                    return node->keyCode;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return 0; // Default key code
+    }
+
+    std::string NodeEditorWindow::generateGameLogicCode() {
+        std::stringstream code;
+        
+        code << "#pragma once\n\n";
+        code << "#include \"../components/Components.h\"\n";
+        code << "#include \"../scene/Scene.h\"\n";
+        code << "#include \"../systems/CoreSystems.h\"\n\n";
+        code << "// Auto-generated from Node Editor\n";
+        code << "// Complete game logic systems\n\n";
+        code << "class GeneratedGameLogic {\n";
+        code << "public:\n";
+        code << "    static void initializeGameSystems(Scene* scene) {\n";
+        code << "        if (!scene) return;\n\n";
+        code << "        // Initialize core game systems based on Node Editor design\n";
+        code << "        auto* systemManager = scene->getSystemManager();\n";
+        code << "        if (systemManager) {\n";
+        code << "            // Core rendering and physics systems\n";
+        code << "            // systemManager->addSystem<RenderSystem>();\n";
+        code << "            // systemManager->addSystem<PhysicsSystem>();\n";
+        code << "            // systemManager->addSystem<PlayerControllerSystem>();\n";
+        code << "            // systemManager->addSystem<EntitySpawnerSystem>();\n";
+        code << "        }\n\n";
+        code << "        printf(\"INFO: Game logic systems initialized from Node Editor\\n\");\n";
+        code << "    }\n\n";
+        
+        code << "    static void updateGameLogic(Scene* scene, float deltaTime) {\n";
+        code << "        if (!scene) return;\n\n";
+        code << "        // Update entity spawners\n";
+        code << "        updateEntitySpawners(scene, deltaTime);\n\n";
+        code << "        // Update player logic\n";  
+        code << "        updatePlayerLogic(scene, deltaTime);\n";
+        code << "    }\n\n";
+        
+        code << "private:\n";
+        code << "    static void updateEntitySpawners(Scene* scene, float deltaTime) {\n";
+        code << "        // EntitySpawner update logic handled by engine's spawner system\n";
+        code << "    }\n\n";
+        
+        code << "    static void updatePlayerLogic(Scene* scene, float deltaTime) {\n";
+        code << "        // Player-specific game logic updates\n";
+        code << "        auto entities = scene->getAllLivingEntities();\n";
+        code << "        for (auto entity : entities) {\n";
+        code << "            if (scene->hasComponent<PlayerController>(entity)) {\n";
+        code << "                // Player entity logic here\n";
+        code << "            }\n";
+        code << "        }\n";
+        code << "    }\n";
+        code << "};\n\n";
+        
+        return code.str();
+    }
+
+    std::string NodeEditorWindow::generateCompleteSceneCode() {
+        std::stringstream code;
+        
+        code << "#include \"NodeEditorGenerated.h\"\n";
+        code << "#include \"../scene/Scene.h\"\n";
+        code << "#include \"../core/Engine.h\"\n\n";
+        code << "// Auto-generated complete scene implementation\n";
+        code << "// This file provides a ready-to-use game scene based on your Node Editor design\n\n";
+        
+        code << "class GeneratedGameScene {\n";
+        code << "public:\n";
+        code << "    static std::shared_ptr<Scene> createGameScene() {\n";
+        code << "        auto scene = std::make_shared<Scene>();\n";
+        code << "        if (!scene) return nullptr;\n\n";
+        
+        code << "        // Initialize the scene with ECS components\n";
+        code << "        scene->initialize();\n\n";
+        
+        code << "        // Apply all Node Editor generated systems\n";
+        code << "        NodeEditorGenerated::initializeScene(scene.get());\n\n";
+        
+        code << "        printf(\"INFO: Generated game scene created with all systems\\n\");\n";
+        code << "        return scene;\n";
+        code << "    }\n\n";
+        
+        code << "    static void updateScene(Scene* scene, float deltaTime) {\n";
+        code << "        if (!scene) return;\n\n";
+        code << "        // Update all Node Editor generated systems\n";
+        code << "        NodeEditorGenerated::updateGame(scene, deltaTime);\n\n";
+        code << "        // Update core scene systems\n";
+        code << "        scene->update(deltaTime);\n";
+        code << "    }\n\n";
+        
+        code << "    static void renderScene(Scene* scene, Renderer* renderer) {\n";
+        code << "        if (!scene || !renderer) return;\n\n";
+        code << "        // Render the scene\n";
+        code << "        scene->render(renderer);\n";
+        code << "    }\n";
+        code << "};\n\n";
+        
+        code << "// Usage Example:\n";
+        code << "// auto gameScene = GeneratedGameScene::createGameScene();\n";
+        code << "// In game loop: GeneratedGameScene::updateScene(gameScene.get(), deltaTime);\n";
+        code << "// In render loop: GeneratedGameScene::renderScene(gameScene.get(), renderer);\n";
+        
+        return code.str();
+    }
+
+    bool NodeEditorWindow::isECSComponentNode(NodeType type) {
+        switch (type) {
+            case NodeType::Transform:
+            case NodeType::SpriteComponent:
+            case NodeType::PlayerController:
+            case NodeType::EntitySpawner:
+            case NodeType::Collider:
+            case NodeType::RigidBody:
+                return true;
+            case NodeType::OnKeyPress:
+            case NodeType::OnMouseClick:
+            case NodeType::OnCollision:
+            case NodeType::EventTrigger:
+            case NodeType::EventListener:
+                return false; // Event nodes are not ECS components
+            default:
+                return false;
+        }
+    }
+    
+    void NodeEditorWindow::saveGeneratedCodeToFiles() {
+        try {
+            // Create game directory if it doesn't exist
+            std::filesystem::create_directories("game");
+            
+            // Generate EntitySpawner code
+            std::string spawnerCode = generateEntitySpawnerCode();
+            if (!spawnerCode.empty()) {
+                std::ofstream spawnerFile("game/GeneratedEntitySpawners.h");
+                if (spawnerFile.is_open()) {
+                    spawnerFile << spawnerCode;
+                    spawnerFile.close();
+                    printf("INFO: Generated EntitySpawner code saved to game/GeneratedEntitySpawners.h\n");
+                }
+            }
+            
+            // Generate Component System code
+            std::string componentCode = generateComponentSystemCode();
+            if (!componentCode.empty()) {
+                std::ofstream componentFile("game/GeneratedComponentSystems.h");
+                if (componentFile.is_open()) {
+                    componentFile << componentCode;
+                    componentFile.close();
+                    printf("INFO: Generated Component System code saved to game/GeneratedComponentSystems.h\n");
+                }
+            }
+            
+            // Generate Event System code (NEW)
+            std::string eventCode = generateEventSystemCode();
+            if (!eventCode.empty()) {
+                std::ofstream eventFile("game/GeneratedEventSystems.h");
+                if (eventFile.is_open()) {
+                    eventFile << eventCode;
+                    eventFile.close();
+                    printf("INFO: Generated Event System code saved to game/GeneratedEventSystems.h\n");
+                }
+            }
+            
+            // Generate Game Logic code (NEW)
+            std::string gameLogicCode = generateGameLogicCode();
+            if (!gameLogicCode.empty()) {
+                std::ofstream gameLogicFile("game/GeneratedGameLogic.h");
+                if (gameLogicFile.is_open()) {
+                    gameLogicFile << gameLogicCode;
+                    gameLogicFile.close();
+                    printf("INFO: Generated Game Logic code saved to game/GeneratedGameLogic.h\n");
+                }
+            }
+            
+            // Generate Complete Game Scene code (NEW)
+            std::string sceneCode = generateCompleteSceneCode();
+            if (!sceneCode.empty()) {
+                std::ofstream sceneFile("game/GeneratedScene.cpp");
+                if (sceneFile.is_open()) {
+                    sceneFile << sceneCode;
+                    sceneFile.close();
+                    printf("INFO: Generated Complete Scene code saved to game/GeneratedScene.cpp\n");
+                }
+            }
+            
+            // Generate main game logic integration file
+            std::stringstream mainCode;
+            mainCode << "#pragma once\n\n";
+            mainCode << "#include \"GeneratedEntitySpawners.h\"\n";
+            mainCode << "#include \"GeneratedComponentSystems.h\"\n";
+            mainCode << "#include \"GeneratedEventSystems.h\"\n";
+            mainCode << "#include \"GeneratedGameLogic.h\"\n";
+            mainCode << "#include \"../scene/Scene.h\"\n\n";
+            mainCode << "// Auto-generated from Node Editor\n";
+            mainCode << "// Main integration file for all generated systems\n\n";
+            mainCode << "class NodeEditorGenerated {\n";
+            mainCode << "public:\n";
+            mainCode << "    static void initializeScene(Scene* scene) {\n";
+            mainCode << "        if (!scene) return;\n\n";
+            mainCode << "        // Setup all component systems from Node Editor\n";
+            mainCode << "        GeneratedComponentSystems::setupAllComponents(scene);\n\n";
+            mainCode << "        // Setup all EntitySpawner systems from Node Editor\n";
+            mainCode << "        GeneratedEntitySpawners::setupAllSpawners(scene);\n\n";
+            mainCode << "        // Setup all Event systems from Node Editor\n";
+            mainCode << "        GeneratedEventSystems::setupAllEvents(scene);\n\n";
+            mainCode << "        // Initialize game logic systems\n";
+            mainCode << "        GeneratedGameLogic::initializeGameSystems(scene);\n\n";
+            mainCode << "        printf(\"INFO: Initialized complete game scene with Node Editor generated systems\\n\");\n";
+            mainCode << "    }\n\n";
+            mainCode << "    static void updateGame(Scene* scene, float deltaTime) {\n";
+            mainCode << "        if (!scene) return;\n\n";
+            mainCode << "        // Update event systems\n";
+            mainCode << "        GeneratedEventSystems::updateEvents(scene, deltaTime);\n\n";
+            mainCode << "        // Update game logic\n";
+            mainCode << "        GeneratedGameLogic::updateGameLogic(scene, deltaTime);\n";
+            mainCode << "    }\n";
+            mainCode << "};\n\n";
+            mainCode << "// Usage: \n";
+            mainCode << "// 1. Call NodeEditorGenerated::initializeScene(scene) in your game initialization\n";
+            mainCode << "// 2. Call NodeEditorGenerated::updateGame(scene, deltaTime) in your game loop\n";
+            mainCode << "// This provides a complete game framework from your visual node designs\n";
+            
+            std::ofstream mainFile("game/NodeEditorGenerated.h");
+            if (mainFile.is_open()) {
+                mainFile << mainCode.str();
+                mainFile.close();
+                printf("INFO: Generated main integration file saved to game/NodeEditorGenerated.h\n");
+            }
+            
+            printf("SUCCESS: Complete game code generation finished! Files saved to game/ directory\n");
+            printf("INFO: Include 'game/NodeEditorGenerated.h' in your project and call:\n");
+            printf("      - NodeEditorGenerated::initializeScene(scene) in setup\n");
+            printf("      - NodeEditorGenerated::updateGame(scene, deltaTime) in game loop\n");
+            
+            // Refresh the Game Code Viewer
+            if (m_codeRefreshCallback) {
+                m_codeRefreshCallback();
+                printf("INFO: Game Code Viewer refreshed with complete game systems\n");
+            }
+            
+        } catch (const std::exception& e) {
+            printf("ERROR: Failed to save generated code files: %s\n", e.what());
         }
     }
 

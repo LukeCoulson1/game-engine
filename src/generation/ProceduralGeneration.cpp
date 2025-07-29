@@ -7,6 +7,7 @@
 #include <cmath>
 #include <queue>
 #include <filesystem>
+#include <iostream>
 
 // TileSpriteManager Implementation
 TileSpriteManager::TileSpriteManager() : m_currentTheme(GenerationTheme::Default) {
@@ -65,17 +66,17 @@ void TileSpriteManager::loadDefaultSprites() {
 void TileSpriteManager::loadDungeonSprites() {
     auto& dungeonMap = m_themeMapping[GenerationTheme::Dungeon];
     dungeonMap[TileType::Empty] = "";
-    dungeonMap[TileType::Wall] = getAssetPath("wall.png");           // Uses your existing wall.png
-    dungeonMap[TileType::Floor] = getAssetPath("ground.png");        // Uses your existing ground.png  
-    dungeonMap[TileType::Door] = getAssetPath("tiles/dungeon_door.png");   // Uses generated door
-    dungeonMap[TileType::Water] = getAssetPath("tiles/terrain_water.png"); // Uses generated water
-    dungeonMap[TileType::Grass] = getAssetPath("ground.png");        // Uses your existing ground.png
-    dungeonMap[TileType::Stone] = getAssetPath("wall.png");          // Uses your existing wall.png
-    dungeonMap[TileType::Tree] = getAssetPath("wall.png");           // Uses your existing wall.png
-    dungeonMap[TileType::Building] = getAssetPath("wall.png");       // Uses your existing wall.png
-    dungeonMap[TileType::Road] = getAssetPath("ground.png");         // Uses your existing ground.png
-    dungeonMap[TileType::House] = getAssetPath("wall.png");          // Uses your existing wall.png
-    dungeonMap[TileType::Shop] = getAssetPath("wall.png");           // Uses your existing wall.png
+    dungeonMap[TileType::Wall] = getAssetPath("tiles/dungeon_wall.png");     // Uses generated dungeon wall
+    dungeonMap[TileType::Floor] = getAssetPath("tiles/dungeon_floor.png");   // Uses generated dungeon floor  
+    dungeonMap[TileType::Door] = getAssetPath("tiles/dungeon_door.png");     // Uses generated door
+    dungeonMap[TileType::Water] = getAssetPath("tiles/terrain_water.png");   // Uses generated water
+    dungeonMap[TileType::Grass] = getAssetPath("tiles/dungeon_floor.png");   // Uses dungeon floor as grass
+    dungeonMap[TileType::Stone] = getAssetPath("tiles/dungeon_wall.png");    // Uses dungeon wall as stone
+    dungeonMap[TileType::Tree] = getAssetPath("tiles/dungeon_wall.png");     // Uses dungeon wall as tree
+    dungeonMap[TileType::Building] = getAssetPath("tiles/dungeon_wall.png"); // Uses dungeon wall as building
+    dungeonMap[TileType::Road] = getAssetPath("tiles/dungeon_floor.png");    // Uses dungeon floor as road
+    dungeonMap[TileType::House] = getAssetPath("tiles/dungeon_wall.png");    // Uses dungeon wall as house
+    dungeonMap[TileType::Shop] = getAssetPath("tiles/dungeon_wall.png");     // Uses dungeon wall as shop
     dungeonMap[TileType::Entrance] = getAssetPath("tiles/tile_entrance.png");
     dungeonMap[TileType::Exit] = getAssetPath("tiles/tile_exit.png");
 }
@@ -245,10 +246,16 @@ void Tile::updateProperties(const TileSpriteManager& spriteManager) {
         case TileType::House:
         case TileType::Shop:
             walkable = false;
-            break;    }
+            break;
+    }
     
     // Get sprite from sprite manager
     spriteName = spriteManager.getSprite(type);
+    
+    // Debug output to track sprite assignment
+    if (type != TileType::Empty) {
+        std::cout << "DEBUG: Tile(" << static_cast<int>(type) << ") assigned sprite: " << spriteName << std::endl;
+    }
 }
 
 // Nomenclature-based automatic assignment implementation
@@ -425,13 +432,20 @@ void ProceduralMap::setSpriteManager(std::shared_ptr<TileSpriteManager> spriteMa
 }
 
 void ProceduralMap::updateAllTileSprites() {
-    if (!m_spriteManager) return;
+    if (!m_spriteManager) {
+        std::cout << "DEBUG: ProceduralMap::updateAllTileSprites - no sprite manager!" << std::endl;
+        return;
+    }
+    
+    std::cout << "DEBUG: ProceduralMap::updateAllTileSprites - updating " << (m_width * m_height) << " tiles" << std::endl;
     
     for (int y = 0; y < m_height; ++y) {
         for (int x = 0; x < m_width; ++x) {
             m_tiles[y][x].updateProperties(*m_spriteManager);
         }
     }
+    
+    std::cout << "DEBUG: ProceduralMap::updateAllTileSprites - completed" << std::endl;
 }
 
 Vector2 ProceduralMap::getWorldPosition(int x, int y) const {

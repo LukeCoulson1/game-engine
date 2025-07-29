@@ -130,6 +130,10 @@ void OptimizedProceduralGeneration::addGameplayEntities(SceneWindow* sceneWindow
                 Vector2 worldPos = map->getWorldPosition(x, y);
                 scene->addComponent<Transform>(entity, Transform(worldPos));
                 
+                // Mark as procedurally generated (gameplay element)
+                scene->addComponent<ProceduralGenerated>(entity, 
+                    ProceduralGenerated(ProceduralGenerated::GenerationType::GameplayElement, x, y));
+                
                 // Add sprite (these special tiles will be rendered as entities, not tiles)
                 auto& engine = Engine::getInstance();
                 auto resourceManager = engine.getResourceManager();
@@ -155,5 +159,6 @@ void OptimizedProceduralGeneration::addGameplayEntities(SceneWindow* sceneWindow
 std::shared_ptr<TileSpriteManager> OptimizedProceduralGeneration::createSpriteManager(GenerationTheme theme) {
     auto spriteManager = std::make_shared<TileSpriteManager>();
     spriteManager->setTheme(theme);
+    std::cout << "DEBUG: Created TileSpriteManager with theme " << static_cast<int>(theme) << std::endl;
     return spriteManager;
 }

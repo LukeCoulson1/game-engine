@@ -63,11 +63,17 @@ public:
     
     // Scene window ID for ImGui
     std::string getWindowID() const;
+    
+    // Grid fitting utility
+    void applyGridFittingToEntity(EntityID entity);
 
 private:
     void renderViewport();
     void renderSceneContent();
     void handleInput();
+    
+    // Grid fitting utility
+    Vector2 calculateGridFitScale(float textureWidth, float textureHeight) const;
     
     // Tile-to-entity conversion for procedural content selection
     EntityID convertTileToEntity(int tileX, int tileY, const Tile& tile);
@@ -79,7 +85,12 @@ private:
     bool m_isOpen = true;    EntityID m_selectedEntity = 0;
     Vector2 m_viewportSize{800, 600};
     bool m_viewportFocused = false;
-    Vector2 m_cameraPosition{0, 0};    float m_zoomLevel = 1.0f;
+    Vector2 m_cameraPosition{0, 0};
+    
+    // Universal grid system
+    static constexpr float GRID_SIZE = 48.0f;
+    
+    float m_zoomLevel = 1.0f;
     const float m_minZoom = 0.1f;
     const float m_maxZoom = 10.0f;
     
@@ -87,6 +98,11 @@ private:
     bool m_isDragging = false;
     ImVec2 m_dragStartPos{0, 0};
     const float m_dragThreshold = 5.0f; // Pixels to move before starting drag
+    
+    // Entity dragging state
+    bool m_isDraggingEntity = false;
+    EntityID m_draggedEntity = 0;
+    Vector2 m_entityDragOffset{0, 0}; // Offset from entity center to mouse position
     
     // Efficient tile rendering
     std::shared_ptr<ProceduralMap> m_proceduralMap;

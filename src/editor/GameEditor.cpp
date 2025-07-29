@@ -13,6 +13,8 @@
 #include <iostream>
 #include <filesystem>
 #include <algorithm>
+#include <fstream>
+#include <sstream>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -30,10 +32,19 @@ GameEditor::GameEditor() {
     m_proceduralManager = std::make_unique<ProceduralGenerationManager>();
       // Initialize node editor
     m_nodeEditor = std::make_unique<NodeEditor::NodeEditorWindow>();    // Initialize scene manager
+    
+    // Set up callback for code refresh
+    m_nodeEditor->setCodeRefreshCallback([this]() {
+        this->loadCodeFiles();
+    });
+    
     m_sceneManager = std::make_unique<SceneManager>(this);
     
     // Initialize game logic window
     m_gameLogicWindow = std::make_unique<GameLogicWindow>();
+    
+    // Initialize collision editor window
+    m_collisionEditor = std::make_unique<CollisionEditorWindow>(this);
     
     // Initialize asset folder from config
     auto& config = ConfigManager::getInstance();
@@ -166,6 +177,8 @@ void GameEditor::renderUI() {    showMainMenuBar();
     if (m_showProceduralGeneration) showProceduralGeneration();    if (m_showNodeEditor) showNodeEditor();
     if (m_showSceneManager) showSceneManager();
     if (m_showGameLogicWindow) showGameLogicWindow();
+    if (m_showCollisionEditor) showCollisionEditor();
+    if (m_showCodeViewer) showCodeViewer();
     if (m_showDemo) ImGui::ShowDemoWindow(&m_showDemo);
     
     // Render all scene windows
@@ -298,6 +311,8 @@ void GameEditor::showMainMenuBar() {
             ImGui::MenuItem("Procedural Generation", nullptr, &m_showProceduralGeneration);            ImGui::MenuItem("Node Editor", nullptr, &m_showNodeEditor);
             ImGui::MenuItem("Scene Manager", nullptr, &m_showSceneManager);
             ImGui::MenuItem("Game Logic Window", nullptr, &m_showGameLogicWindow);
+            ImGui::MenuItem("Collision Editor", nullptr, &m_showCollisionEditor);
+            ImGui::MenuItem("Code Viewer", nullptr, &m_showCodeViewer);
             ImGui::Separator();
             ImGui::MenuItem("ImGui Demo", nullptr, &m_showDemo);
             ImGui::EndMenu();
@@ -478,7 +493,7 @@ void GameEditor::showInspector() {
                 ImGui::TextDisabled("(?)");
                 if (ImGui::IsItemHovered()) {
                     ImGui::SetTooltip("World coordinates can be negative!\n(0,0) = center of screen\nNegative X = left, Negative Y = up");
-                }                if (ImGui::DragFloat2("Scale", &transform.scale.x, 0.1f, 0.1f, 10.0f)) {
+                }                if (ImGui::DragFloat2("Scale", &transform.scale.x, 0.01f, 0.01f, 50.0f)) {
                     m_activeSceneWindow->setDirty(true);
                     printf("DEBUG: Scale changed to %.2f, %.2f\n", transform.scale.x, transform.scale.y);
                     
@@ -486,6 +501,63 @@ void GameEditor::showInspector() {
                     auto& verifyTransform = scene->getComponent<Transform>(selectedEntity);
                     printf("DEBUG: Verified persisted scale: %.2f, %.2f\n", verifyTransform.scale.x, verifyTransform.scale.y);
                     fflush(stdout);
+                }
+                
+                // Scale preset buttons
+                ImGui::Text("Quick Scale:");
+                if (ImGui::SmallButton("0.1x")) {
+                    transform.scale = Vector2(0.1f, 0.1f);
+                    m_activeSceneWindow->setDirty(true);
+                }
+                ImGui::SameLine();
+                if (ImGui::SmallButton("0.5x")) {
+                    transform.scale = Vector2(0.5f, 0.5f);
+                    m_activeSceneWindow->setDirty(true);
+                }
+                ImGui::SameLine();
+                if (ImGui::SmallButton("1x")) {
+                    transform.scale = Vector2(1.0f, 1.0f);
+                    m_activeSceneWindow->setDirty(true);
+                }
+                ImGui::SameLine();
+                if (ImGui::SmallButton("2x")) {
+                    transform.scale = Vector2(2.0f, 2.0f);
+                    m_activeSceneWindow->setDirty(true);
+                }
+                ImGui::SameLine();
+                if (ImGui::SmallButton("5x")) {
+                    transform.scale = Vector2(5.0f, 5.0f);
+                    m_activeSceneWindow->setDirty(true);
+                }
+                ImGui::SameLine();
+                if (ImGui::SmallButton("10x")) {
+                    transform.scale = Vector2(10.0f, 10.0f);
+                    m_activeSceneWindow->setDirty(true);
+                }
+                
+                // Fine-tuning controls
+                ImGui::Separator();
+                ImGui::Text("Fine Scale Control:");
+                float scaleStep = 0.1f;
+                if (ImGui::SmallButton("-0.1")) {
+                    float newScaleX = transform.scale.x - scaleStep;
+                    float newScaleY = transform.scale.y - scaleStep;
+                    transform.scale.x = (newScaleX < 0.01f) ? 0.01f : newScaleX;
+                    transform.scale.y = (newScaleY < 0.01f) ? 0.01f : newScaleY;
+                    m_activeSceneWindow->setDirty(true);
+                }
+                ImGui::SameLine();
+                if (ImGui::SmallButton("+0.1")) {
+                    float newScaleX = transform.scale.x + scaleStep;
+                    float newScaleY = transform.scale.y + scaleStep;
+                    transform.scale.x = (newScaleX > 50.0f) ? 50.0f : newScaleX;
+                    transform.scale.y = (newScaleY > 50.0f) ? 50.0f : newScaleY;
+                    m_activeSceneWindow->setDirty(true);
+                }
+                ImGui::SameLine();
+                ImGui::TextDisabled("(?)");
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Current scale: %.3fx, %.3fx\\nGrid-fitted sprites are automatically scaled to fit 48x48 grid\\nAdditional transform scale multiplies on top of grid-fitting");
                 }
                 if (ImGui::DragFloat("Rotation", &transform.rotation, 1.0f, -360.0f, 360.0f)) {
                     m_activeSceneWindow->setDirty(true);
@@ -804,6 +876,231 @@ void GameEditor::showInspector() {
                 ImGui::Text("Frame: %d | Frame Rate: %.1f fps", state.currentFrame, state.frameRate);
             }
         }
+        
+        if (scene->hasComponent<EntitySpawner>(selectedEntity)) {
+            if (ImGui::CollapsingHeader("🏭 Entity Spawner", ImGuiTreeNodeFlags_DefaultOpen)) {
+                auto& spawner = scene->getComponent<EntitySpawner>(selectedEntity);
+                
+                // Spawner status
+                ImGui::Text("Spawner Status:");
+                ImGui::Checkbox("Can Spawn", &spawner.canSpawn);
+                ImGui::SameLine();
+                ImGui::Text("Spawned: %d", spawner.spawnCount);
+                
+                // Spawn settings
+                ImGui::DragFloat("Cooldown Time", &spawner.cooldownTime, 0.01f, 0.0f, 10.0f, "%.2fs");
+                ImGui::DragInt("Max Spawns", &spawner.maxSpawns, 1, -1, 1000);
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("-1 = unlimited spawns");
+                }
+                
+                ImGui::DragFloat2("Spawn Direction", &spawner.spawnDirection.x, 0.1f, -1.0f, 1.0f);
+                ImGui::Checkbox("Inherit Velocity", &spawner.inheritVelocity);
+                
+                ImGui::Separator();
+                
+                // Template management (read-only display)
+                ImGui::Text("🎯 Spawn Templates:");
+                ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "Templates are managed through the Node Editor");
+                
+                if (spawner.templates.empty()) {
+                    ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "No templates configured");
+                    ImGui::TextWrapped("💡 To add templates: Open Node Editor → Connect Entity nodes to EntitySpawner's 'Template' input pin");
+                } else {
+                    // Template selector (read-only)
+                    std::vector<const char*> templateNames;
+                    for (const auto& tmpl : spawner.templates) {
+                        templateNames.push_back(tmpl.name.c_str());
+                    }
+                    
+                    ImGui::Combo("Selected Template", &spawner.selectedTemplate, 
+                                templateNames.data(), static_cast<int>(templateNames.size()));
+                    
+                    // Show current template info (read-only)
+                    if (spawner.selectedTemplate >= 0 && spawner.selectedTemplate < static_cast<int>(spawner.templates.size())) {
+                        const auto& tmpl = spawner.templates[spawner.selectedTemplate];
+                        
+                        ImGui::Separator();
+                        ImGui::Text("📝 Template Info (Read-Only):");
+                        
+                        ImGui::Text("Name: %s", tmpl.name.c_str());
+                        
+                        if (tmpl.spriteFile.find("TEMPLATE_ENTITY_") == 0) {
+                            // Extract entity ID from template reference
+                            std::string idStr = tmpl.spriteFile.substr(16);
+                            ImGui::Text("Template Entity: Entity %s", idStr.c_str());
+                        } else if (!tmpl.spriteFile.empty()) {
+                            ImGui::Text("Sprite File: %s", tmpl.spriteFile.c_str());
+                        } else {
+                            ImGui::Text("Sprite File: (none)");
+                        }
+                        
+                        ImGui::Text("Spawn Offset: (%.1f, %.1f)", tmpl.spawnOffset.x, tmpl.spawnOffset.y);
+                        ImGui::Text("Initial Velocity: (%.1f, %.1f)", tmpl.velocity.x, tmpl.velocity.y);
+                        ImGui::Text("Life Time: %.1fs %s", tmpl.lifeTime, tmpl.lifeTime == 0.0f ? "(permanent)" : "");
+                        ImGui::Text("Scale: %.2f", tmpl.scale);
+                        ImGui::Text("Has Collider: %s", tmpl.hasCollider ? "Yes" : "No");
+                        ImGui::Text("Has RigidBody: %s", tmpl.hasRigidBody ? "Yes" : "No");
+                    }
+                }
+                
+                // Manual spawn button for testing
+                ImGui::Separator();
+                if (ImGui::Button("Spawn Now") && spawner.canSpawn && !spawner.templates.empty()) {
+                    float currentTime = static_cast<float>(SDL_GetTicks()) / 1000.0f;
+                    if (spawner.isReady(currentTime)) {
+                        spawnEntityFromTemplate(selectedEntity, spawner, currentTime);
+                        spawner.updateLastSpawnTime(currentTime);
+                        m_activeSceneWindow->setDirty(true);
+                    }
+                }
+                
+                // Reset utility function
+                ImGui::Separator();
+                if (ImGui::Button("Reset Spawn Count")) {
+                    spawner.reset();
+                    m_activeSceneWindow->setDirty(true);
+                }
+            }
+        }
+        
+        // ParticleEffect Component
+        if (scene->hasComponent<ParticleEffect>(selectedEntity)) {
+            if (ImGui::CollapsingHeader("✨ Particle Effect", ImGuiTreeNodeFlags_DefaultOpen)) {
+                auto& particleEffect = scene->getComponent<ParticleEffect>(selectedEntity);
+                
+                // Emission settings
+                ImGui::Text("🚀 Emission Settings:");
+                ImGui::DragFloat("Emission Rate", &particleEffect.emissionRate, 1.0f, 0.0f, 1000.0f, "%.0f particles/sec");
+                ImGui::DragFloat("Burst Count", &particleEffect.burstCount, 1.0f, 0.0f, 1000.0f, "%.0f particles");
+                
+                // Emission shape
+                const char* shapeNames[] = { "Point", "Circle", "Box", "Cone" };
+                int currentShape = static_cast<int>(particleEffect.shape);
+                if (ImGui::Combo("Emission Shape", &currentShape, shapeNames, 4)) {
+                    particleEffect.shape = static_cast<ParticleEffect::EmissionShape>(currentShape);
+                    m_activeSceneWindow->setDirty(true);
+                }
+                
+                if (particleEffect.shape == ParticleEffect::EmissionShape::Circle || 
+                    particleEffect.shape == ParticleEffect::EmissionShape::Box) {
+                    ImGui::DragFloat2("Emission Size", &particleEffect.emissionSize.x, 1.0f, 0.0f, 1000.0f, "%.1f");
+                } else if (particleEffect.shape == ParticleEffect::EmissionShape::Cone) {
+                    ImGui::DragFloat("Cone Angle", &particleEffect.coneAngle, 1.0f, 0.0f, 360.0f, "%.1f°");
+                }
+                
+                ImGui::Separator();
+                
+                // Particle properties
+                ImGui::Text("⚡ Particle Properties:");
+                ImGui::DragFloat("Min Lifetime", &particleEffect.minLifetime, 0.1f, 0.1f, 60.0f, "%.1fs");
+                ImGui::DragFloat("Max Lifetime", &particleEffect.maxLifetime, 0.1f, 0.1f, 60.0f, "%.1fs");
+                ImGui::DragFloat2("Min Velocity", &particleEffect.minVelocity.x, 1.0f, -1000.0f, 1000.0f, "%.1f");
+                ImGui::DragFloat2("Max Velocity", &particleEffect.maxVelocity.x, 1.0f, -1000.0f, 1000.0f, "%.1f");
+                
+                ImGui::DragFloat("Min Size", &particleEffect.minSize, 0.1f, 0.1f, 100.0f, "%.1f");
+                ImGui::DragFloat("Max Size", &particleEffect.maxSize, 0.1f, 0.1f, 100.0f, "%.1f");
+                
+                ImGui::DragFloat("Min Rotation Speed", &particleEffect.minRotationSpeed, 1.0f, -360.0f, 360.0f, "%.1f°/s");
+                ImGui::DragFloat("Max Rotation Speed", &particleEffect.maxRotationSpeed, 1.0f, -360.0f, 360.0f, "%.1f°/s");
+                
+                ImGui::Separator();
+                
+                // Visual properties
+                ImGui::Text("🎨 Visual Properties:");
+                
+                // Convert Color to float array for ImGui
+                float startColor[4] = {
+                    particleEffect.startColor.r / 255.0f,
+                    particleEffect.startColor.g / 255.0f,
+                    particleEffect.startColor.b / 255.0f,
+                    particleEffect.startColor.a / 255.0f
+                };
+                if (ImGui::ColorEdit4("Start Color", startColor)) {
+                    particleEffect.startColor.r = (uint8_t)(startColor[0] * 255);
+                    particleEffect.startColor.g = (uint8_t)(startColor[1] * 255);
+                    particleEffect.startColor.b = (uint8_t)(startColor[2] * 255);
+                    particleEffect.startColor.a = (uint8_t)(startColor[3] * 255);
+                    m_activeSceneWindow->setDirty(true);
+                }
+                
+                float endColor[4] = {
+                    particleEffect.endColor.r / 255.0f,
+                    particleEffect.endColor.g / 255.0f,
+                    particleEffect.endColor.b / 255.0f,
+                    particleEffect.endColor.a / 255.0f
+                };
+                if (ImGui::ColorEdit4("End Color", endColor)) {
+                    particleEffect.endColor.r = (uint8_t)(endColor[0] * 255);
+                    particleEffect.endColor.g = (uint8_t)(endColor[1] * 255);
+                    particleEffect.endColor.b = (uint8_t)(endColor[2] * 255);
+                    particleEffect.endColor.a = (uint8_t)(endColor[3] * 255);
+                    m_activeSceneWindow->setDirty(true);
+                }
+                
+                // Blend mode
+                const char* blendModes[] = { "Normal", "Additive", "Multiply" };
+                int currentBlend = static_cast<int>(particleEffect.blendMode);
+                if (ImGui::Combo("Blend Mode", &currentBlend, blendModes, 3)) {
+                    particleEffect.blendMode = static_cast<ParticleEffect::BlendMode>(currentBlend);
+                    m_activeSceneWindow->setDirty(true);
+                }
+                
+                ImGui::Separator();
+                
+                // Physics
+                ImGui::Text("🌍 Physics:");
+                ImGui::DragFloat2("Gravity", &particleEffect.gravity.x, 1.0f, -1000.0f, 1000.0f, "%.1f");
+                
+                ImGui::Separator();
+                
+                // Preset effects
+                ImGui::Text("🎯 Quick Presets:");
+                if (ImGui::Button("Fire Effect")) {
+                    particleEffect.setupFireEffect();
+                    m_activeSceneWindow->setDirty(true);
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Smoke Effect")) {
+                    particleEffect.setupSmokeEffect();
+                    m_activeSceneWindow->setDirty(true);
+                }
+                
+                if (ImGui::Button("Spark Effect")) {
+                    particleEffect.setupSparkEffect();
+                    m_activeSceneWindow->setDirty(true);
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Magic Effect")) {
+                    particleEffect.setupMagicEffect();
+                    m_activeSceneWindow->setDirty(true);
+                }
+                
+                ImGui::Separator();
+                
+                // Control buttons
+                ImGui::Text("🎮 Controls:");
+                if (ImGui::Button("Start/Resume")) {
+                    particleEffect.isEmitting = true;
+                    m_activeSceneWindow->setDirty(true);
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Pause")) {
+                    particleEffect.isEmitting = false;
+                    m_activeSceneWindow->setDirty(true);
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Clear Particles")) {
+                    particleEffect.particles.clear();
+                    m_activeSceneWindow->setDirty(true);
+                }
+                
+                // Status info
+                ImGui::Text("Status: %s | Active Particles: %d", 
+                           particleEffect.isEmitting ? "Running" : "Paused",
+                           particleEffect.getActiveParticleCount());
+            }
+        }
 
         // Add component buttons
         ImGui::Separator();
@@ -821,6 +1118,16 @@ void GameEditor::showInspector() {
         
         if (ImGui::Button("Add RigidBody Component") && !scene->hasComponent<RigidBody>(selectedEntity)) {
             scene->addComponent<RigidBody>(selectedEntity, RigidBody());
+            m_activeSceneWindow->setDirty(true);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Add Entity Spawner") && !scene->hasComponent<EntitySpawner>(selectedEntity)) {
+            scene->addComponent<EntitySpawner>(selectedEntity, EntitySpawner());
+            m_activeSceneWindow->setDirty(true);
+        }
+        
+        if (ImGui::Button("Add Particle Effect") && !scene->hasComponent<ParticleEffect>(selectedEntity)) {
+            scene->addComponent<ParticleEffect>(selectedEntity, ParticleEffect());
             m_activeSceneWindow->setDirty(true);
         }
         
@@ -963,6 +1270,256 @@ void GameEditor::showInspector() {
     } else {
         ImGui::Text("No entity selected");
         ImGui::TextWrapped("Select an entity from the scene to view and edit its components.");
+        
+        ImGui::Separator();
+        
+        // Entity Creation Section
+        if (ImGui::CollapsingHeader("Entity Creation", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Text("🏭 Create New Entities:");
+            
+            static char entityNameBuffer[256] = "New Entity";
+            static float spawnPosX = 0.0f;
+            static float spawnPosY = 0.0f;
+            static bool spawnAtCamera = true;
+            
+            ImGui::InputText("Entity Name", entityNameBuffer, sizeof(entityNameBuffer));
+            
+            ImGui::Checkbox("Spawn at Camera Position", &spawnAtCamera);
+            
+            if (!spawnAtCamera) {
+                ImGui::DragFloat2("Spawn Position", &spawnPosX, 1.0f, -1000.0f, 1000.0f);
+            }
+            
+            ImGui::Separator();
+            
+            // Basic entity creation
+            if (ImGui::Button("Create Empty Entity", ImVec2(-1, 0))) {
+                if (scene) {
+                    EntityID newEntity = scene->createEntity();
+                    scene->setEntityName(newEntity, std::string(entityNameBuffer));
+                    
+                    Vector2 spawnPos = spawnAtCamera ? m_activeSceneWindow->getCameraPosition() : Vector2(spawnPosX, spawnPosY);
+                    scene->addComponent<Transform>(newEntity, Transform(spawnPos));
+                    
+                    m_activeSceneWindow->applyGridFittingToEntity(newEntity);
+                    m_activeSceneWindow->setSelectedEntity(newEntity);
+                    m_activeSceneWindow->setDirty(true);
+                    
+                    m_consoleMessages.push_back("✅ Created empty entity: " + std::string(entityNameBuffer));
+                }
+            }
+            
+            // Pre-configured entity types
+            ImGui::Text("📦 Pre-configured Templates:");
+            
+            if (ImGui::Button("Create Sprite Entity", ImVec2(-1, 0))) {
+                if (scene) {
+                    EntityID newEntity = scene->createEntity();
+                    scene->setEntityName(newEntity, std::string(entityNameBuffer) + "_Sprite");
+                    
+                    Vector2 spawnPos = spawnAtCamera ? m_activeSceneWindow->getCameraPosition() : Vector2(spawnPosX, spawnPosY);
+                    scene->addComponent<Transform>(newEntity, Transform(spawnPos));
+                    
+                    // Add sprite component
+                    Sprite sprite;
+                    sprite.visible = true;
+                    sprite.layer = 0;
+                    scene->addComponent<Sprite>(newEntity, sprite);
+                    
+                    m_activeSceneWindow->applyGridFittingToEntity(newEntity);
+                    m_activeSceneWindow->setSelectedEntity(newEntity);
+                    m_activeSceneWindow->setDirty(true);
+                    
+                    m_consoleMessages.push_back("✅ Created sprite entity: " + std::string(entityNameBuffer) + "_Sprite");
+                }
+            }
+            
+            if (ImGui::Button("Create Player Entity", ImVec2(-1, 0))) {
+                if (scene) {
+                    EntityID newEntity = scene->createEntity();
+                    scene->setEntityName(newEntity, std::string(entityNameBuffer) + "_Player");
+                    
+                    Vector2 spawnPos = spawnAtCamera ? m_activeSceneWindow->getCameraPosition() : Vector2(spawnPosX, spawnPosY);
+                    scene->addComponent<Transform>(newEntity, Transform(spawnPos));
+                    
+                    // Add all player components
+                    Sprite sprite;
+                    sprite.visible = true;
+                    sprite.layer = 1;
+                    scene->addComponent<Sprite>(newEntity, sprite);
+                    scene->addComponent<Collider>(newEntity, Collider());
+                    scene->addComponent<RigidBody>(newEntity, RigidBody());
+                    scene->addComponent<PlayerController>(newEntity, PlayerController());
+                    scene->addComponent<PlayerStats>(newEntity, PlayerStats());
+                    
+                    m_activeSceneWindow->applyGridFittingToEntity(newEntity);
+                    m_activeSceneWindow->setSelectedEntity(newEntity);
+                    m_activeSceneWindow->setDirty(true);
+                    
+                    m_consoleMessages.push_back("✅ Created player entity: " + std::string(entityNameBuffer) + "_Player");
+                }
+            }
+            
+            if (ImGui::Button("Create Enemy Entity", ImVec2(-1, 0))) {
+                if (scene) {
+                    EntityID newEntity = scene->createEntity();
+                    scene->setEntityName(newEntity, std::string(entityNameBuffer) + "_Enemy");
+                    
+                    Vector2 spawnPos = spawnAtCamera ? m_activeSceneWindow->getCameraPosition() : Vector2(spawnPosX, spawnPosY);
+                    scene->addComponent<Transform>(newEntity, Transform(spawnPos));
+                    
+                    // Add enemy components
+                    Sprite sprite;
+                    sprite.visible = true;
+                    sprite.layer = 1;
+                    scene->addComponent<Sprite>(newEntity, sprite);
+                    scene->addComponent<Collider>(newEntity, Collider());
+                    scene->addComponent<RigidBody>(newEntity, RigidBody());
+                    scene->addComponent<PlayerStats>(newEntity, PlayerStats()); // Can be used for enemy stats too
+                    
+                    m_activeSceneWindow->applyGridFittingToEntity(newEntity);
+                    m_activeSceneWindow->setSelectedEntity(newEntity);
+                    m_activeSceneWindow->setDirty(true);
+                    
+                    m_consoleMessages.push_back("✅ Created enemy entity: " + std::string(entityNameBuffer) + "_Enemy");
+                }
+            }
+            
+            ImGui::Separator();
+            
+            // Entity duplication from selected
+            if (m_activeSceneWindow->hasSelectedEntity()) {
+                EntityID selectedEntity = m_activeSceneWindow->getSelectedEntity();
+                std::string selectedName = scene->getEntityName(selectedEntity);
+                
+                if (ImGui::Button(("Duplicate Selected Entity (" + selectedName + ")").c_str(), ImVec2(-1, 0))) {
+                    EntityID newEntity = scene->createEntity();
+                    scene->setEntityName(newEntity, selectedName + "_Copy");
+                    
+                    // Copy transform component
+                    if (scene->hasComponent<Transform>(selectedEntity)) {
+                        auto& originalTransform = scene->getComponent<Transform>(selectedEntity);
+                        Transform newTransform = originalTransform;
+                        newTransform.position.x += 50.0f; // Offset to avoid overlapping
+                        scene->addComponent<Transform>(newEntity, newTransform);
+                    }
+                    
+                    // Copy sprite component
+                    if (scene->hasComponent<Sprite>(selectedEntity)) {
+                        auto& originalSprite = scene->getComponent<Sprite>(selectedEntity);
+                        scene->addComponent<Sprite>(newEntity, originalSprite);
+                    }
+                    
+                    // Copy collider component
+                    if (scene->hasComponent<Collider>(selectedEntity)) {
+                        auto& originalCollider = scene->getComponent<Collider>(selectedEntity);
+                        scene->addComponent<Collider>(newEntity, originalCollider);
+                    }
+                    
+                    // Copy rigidbody component
+                    if (scene->hasComponent<RigidBody>(selectedEntity)) {
+                        auto& originalRigidBody = scene->getComponent<RigidBody>(selectedEntity);
+                        scene->addComponent<RigidBody>(newEntity, originalRigidBody);
+                    }
+                    
+                    // Copy player components if they exist
+                    if (scene->hasComponent<PlayerController>(selectedEntity)) {
+                        auto& original = scene->getComponent<PlayerController>(selectedEntity);
+                        scene->addComponent<PlayerController>(newEntity, original);
+                    }
+                    if (scene->hasComponent<PlayerStats>(selectedEntity)) {
+                        auto& original = scene->getComponent<PlayerStats>(selectedEntity);
+                        scene->addComponent<PlayerStats>(newEntity, original);
+                    }
+                    if (scene->hasComponent<PlayerPhysics>(selectedEntity)) {
+                        auto& original = scene->getComponent<PlayerPhysics>(selectedEntity);
+                        scene->addComponent<PlayerPhysics>(newEntity, original);
+                    }
+                    if (scene->hasComponent<PlayerInventory>(selectedEntity)) {
+                        auto& original = scene->getComponent<PlayerInventory>(selectedEntity);
+                        scene->addComponent<PlayerInventory>(newEntity, original);
+                    }
+                    if (scene->hasComponent<PlayerAbilities>(selectedEntity)) {
+                        auto& original = scene->getComponent<PlayerAbilities>(selectedEntity);
+                        scene->addComponent<PlayerAbilities>(newEntity, original);
+                    }
+                    if (scene->hasComponent<PlayerState>(selectedEntity)) {
+                        auto& original = scene->getComponent<PlayerState>(selectedEntity);
+                        scene->addComponent<PlayerState>(newEntity, original);
+                    }
+                    if (scene->hasComponent<EntitySpawner>(selectedEntity)) {
+                        auto& original = scene->getComponent<EntitySpawner>(selectedEntity);
+                        scene->addComponent<EntitySpawner>(newEntity, original);
+                    }
+                    if (scene->hasComponent<ParticleEffect>(selectedEntity)) {
+                        auto& original = scene->getComponent<ParticleEffect>(selectedEntity);
+                        scene->addComponent<ParticleEffect>(newEntity, original);
+                    }
+                    
+                    m_activeSceneWindow->setSelectedEntity(newEntity);
+                    m_activeSceneWindow->setDirty(true);
+                    
+                    m_consoleMessages.push_back("✅ Duplicated entity: " + selectedName + " -> " + selectedName + "_Copy");
+                }
+            }
+        }
+        
+        // Node Editor Entity Spawning Section
+        if (ImGui::CollapsingHeader("Node Editor Entity Spawning", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Text("🔗 Create Entity Spawner Nodes:");
+            ImGui::TextWrapped("Add entity spawning capabilities to your visual scripting.");
+            
+            if (ImGui::Button("Add Entity Spawner Node", ImVec2(-1, 0))) {
+                if (m_nodeEditor) {
+                    // Create EntitySpawner node at center of node editor
+                    ImVec2 nodePos(200, 200);
+                    m_nodeEditor->createNode(NodeEditor::NodeType::EntitySpawner, nodePos);
+                    m_consoleMessages.push_back("✅ Added Entity Spawner node to Node Editor");
+                }
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Creates an EntitySpawner node in the Node Editor.\nInputs: Spawn event, Template input (connect Entity nodes), Position\nOutputs: Spawned event, New entity");
+            }
+            
+            if (ImGui::Button("Add Entity Factory Node", ImVec2(-1, 0))) {
+                if (m_nodeEditor) {
+                    // Create EntityFactory node at center of node editor
+                    ImVec2 nodePos(200, 300);
+                    m_nodeEditor->createNode(NodeEditor::NodeType::EntityFactory, nodePos);
+                    m_consoleMessages.push_back("✅ Added Entity Factory node to Node Editor");
+                }
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Creates a node that can generate new entities dynamically.\nInputs: Create event, Entity name, Position\nOutputs: Created event, Entity reference");
+            }
+            
+            ImGui::Separator();
+            
+            ImGui::Text("💡 Quick Setup:");
+            if (ImGui::Button("Create Complete Spawning System", ImVec2(-1, 0))) {
+                if (m_nodeEditor && scene) {
+                    // Create a complete entity spawning setup with multiple nodes
+                    
+                    // Entity node (template)
+                    ImVec2 entityNodePos(50, 150);
+                    int entityNodeId = m_nodeEditor->createNode(NodeEditor::NodeType::Entity, entityNodePos);
+                    
+                    // Entity Spawner node
+                    ImVec2 spawnerNodePos(300, 150);
+                    int spawnerNodeId = m_nodeEditor->createNode(NodeEditor::NodeType::EntitySpawner, spawnerNodePos);
+                    
+                    // Entity Factory node
+                    ImVec2 factoryNodePos(300, 300);
+                    int factoryNodeId = m_nodeEditor->createNode(NodeEditor::NodeType::EntityFactory, factoryNodePos);
+                    
+                    m_consoleMessages.push_back("✅ Created complete entity spawning system in Node Editor");
+                    m_consoleMessages.push_back("💡 Connect Entity nodes to the EntitySpawner's Template input to configure spawning");
+                }
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Creates Entity, EntitySpawner, and EntityFactory nodes.\nConnect Entity node output → EntitySpawner Template input to set up spawning.");
+            }
+        }
     }
     
     ImGui::End();
@@ -1254,11 +1811,13 @@ void GameEditor::createNewScene() {
     auto renderSystem = m_currentScene->registerSystem<RenderSystem>();
     auto physicsSystem = m_currentScene->registerSystem<PhysicsSystem>();
     auto collisionSystem = m_currentScene->registerSystem<CollisionSystem>();
+    auto particleSystem = m_currentScene->registerSystem<ParticleSystem>();
     
     // Set scene pointer for each system
     renderSystem->setScene(m_currentScene.get());
     physicsSystem->setScene(m_currentScene.get());
     collisionSystem->setScene(m_currentScene.get());
+    particleSystem->setScene(m_currentScene.get());
     
     // Set system signatures
     ComponentMask renderSignature;
@@ -1275,6 +1834,11 @@ void GameEditor::createNewScene() {
     collisionSignature.set(m_currentScene->getComponentType<Transform>());
     collisionSignature.set(m_currentScene->getComponentType<Collider>());
     m_currentScene->setSystemSignature<CollisionSystem>(collisionSignature);
+    
+    ComponentMask particleSignature;
+    particleSignature.set(m_currentScene->getComponentType<Transform>());
+    particleSignature.set(m_currentScene->getComponentType<ParticleEffect>());
+    m_currentScene->setSystemSignature<ParticleSystem>(particleSignature);
     
     m_consoleMessages.push_back("Created new scene");
 }
@@ -1687,6 +2251,7 @@ void GameEditor::showProceduralGeneration() {
     static int mapWidth = 50;
     static int mapHeight = 50;
     static unsigned int seed = 12345;
+    static bool clearExistingEntities = true;  // Safe to clear by default (only procedural entities)
     
     ImGui::Text("📐 Map Settings:");
     ImGui::DragInt("Width", &mapWidth, 1.0f, 10, 200);
@@ -1696,6 +2261,10 @@ void GameEditor::showProceduralGeneration() {
     if (ImGui::Button("Random Seed")) {
         seed = std::random_device{}();
     }
+    
+    ImGui::Checkbox("Clear Existing Entities", &clearExistingEntities);
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "(Only clears procedural entities, preserves user entities)");
     
     ImGui::Separator();
     
@@ -1717,12 +2286,28 @@ void GameEditor::showProceduralGeneration() {
                 return;
             }
             
-            // Clear existing procedural map and entities (optional - could ask user)
+            // Clear existing procedural map
             m_activeSceneWindow->setProceduralMap(nullptr);
-            auto activeScene = m_activeSceneWindow->getScene();
-                       auto entities = activeScene->getAllLivingEntities();
-            for (EntityID entity : entities) {
-                activeScene->destroyEntity(entity);
+            
+            // Optionally clear existing entities based on user choice
+            if (clearExistingEntities) {
+                auto activeScene = m_activeSceneWindow->getScene();
+                auto entities = activeScene->getAllLivingEntities();
+                
+                // Only destroy procedurally generated entities, preserve user-created ones
+                int destroyedCount = 0;
+                for (EntityID entity : entities) {
+                    if (activeScene->hasComponent<ProceduralGenerated>(entity)) {
+                        activeScene->destroyEntity(entity);
+                        destroyedCount++;
+                    }
+                }
+                
+                if (destroyedCount > 0) {
+                    m_consoleMessages.push_back("Cleared " + std::to_string(destroyedCount) + " procedurally generated entities (preserved user entities)");
+                } else {
+                    m_consoleMessages.push_back("No procedurally generated entities to clear");
+                }
             }
             
             // Generate dungeon using optimized method
@@ -1752,12 +2337,28 @@ void GameEditor::showProceduralGeneration() {
                 return;
             }
             
-            // Clear existing procedural map and entities (optional - could ask user)
+            // Clear existing procedural map
             m_activeSceneWindow->setProceduralMap(nullptr);
-            auto activeScene = m_activeSceneWindow->getScene();
-            auto entities = activeScene->getAllLivingEntities();
-            for (EntityID entity : entities) {
-                activeScene->destroyEntity(entity);
+            
+            // Optionally clear existing entities based on user choice
+            if (clearExistingEntities) {
+                auto activeScene = m_activeSceneWindow->getScene();
+                auto entities = activeScene->getAllLivingEntities();
+                
+                // Only destroy procedurally generated entities, preserve user-created ones
+                int destroyedCount = 0;
+                for (EntityID entity : entities) {
+                    if (activeScene->hasComponent<ProceduralGenerated>(entity)) {
+                        activeScene->destroyEntity(entity);
+                        destroyedCount++;
+                    }
+                }
+                
+                if (destroyedCount > 0) {
+                    m_consoleMessages.push_back("Cleared " + std::to_string(destroyedCount) + " procedurally generated entities (preserved user entities)");
+                } else {
+                    m_consoleMessages.push_back("No procedurally generated entities to clear");
+                }
             }
             
             // Generate city using optimized method
@@ -1788,12 +2389,28 @@ void GameEditor::showProceduralGeneration() {
                 return;
             }
             
-            // Clear existing procedural map and entities (optional - could ask user)
+            // Clear existing procedural map
             m_activeSceneWindow->setProceduralMap(nullptr);
-            auto activeScene = m_activeSceneWindow->getScene();
-            auto entities = activeScene->getAllLivingEntities();
-            for (EntityID entity : entities) {
-                activeScene->destroyEntity(entity);
+            
+            // Optionally clear existing entities based on user choice
+            if (clearExistingEntities) {
+                auto activeScene = m_activeSceneWindow->getScene();
+                auto entities = activeScene->getAllLivingEntities();
+                
+                // Only destroy procedurally generated entities, preserve user-created ones
+                int destroyedCount = 0;
+                for (EntityID entity : entities) {
+                    if (activeScene->hasComponent<ProceduralGenerated>(entity)) {
+                        activeScene->destroyEntity(entity);
+                        destroyedCount++;
+                    }
+                }
+                
+                if (destroyedCount > 0) {
+                    m_consoleMessages.push_back("Cleared " + std::to_string(destroyedCount) + " procedurally generated entities (preserved user entities)");
+                } else {
+                    m_consoleMessages.push_back("No procedurally generated entities to clear");
+                }
             }
             
             // Generate terrain using optimized method
@@ -1848,6 +2465,134 @@ void GameEditor::showGameLogicWindow() {
     if (m_gameLogicWindow) {
         m_gameLogicWindow->show(&m_showGameLogicWindow, m_activeSceneWindow);
     }
+}
+
+void GameEditor::showCollisionEditor() {
+    if (m_collisionEditor) {
+        m_collisionEditor->setOpen(m_showCollisionEditor);
+        
+        // Update selected entity if we have an active scene window
+        if (m_activeSceneWindow && m_activeSceneWindow->getScene()) {
+            EntityID selectedEntity = m_activeSceneWindow->getSelectedEntity();
+            m_collisionEditor->setSelectedEntity(selectedEntity, m_activeSceneWindow->getScene());
+        } else {
+            m_collisionEditor->setSelectedEntity(0, nullptr);
+        }
+        
+        m_collisionEditor->render();
+        m_showCollisionEditor = m_collisionEditor->isOpen();
+    }
+}
+
+void GameEditor::showCodeViewer() {
+    if (!m_showCodeViewer) return;
+    
+    // Load code files if not already loaded
+    if (!m_codeFilesLoaded) {
+        loadCodeFiles();
+        m_codeFilesLoaded = true;
+    }
+    
+    ImGui::SetNextWindowSize(ImVec2(1000, 700), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Game Code Viewer", &m_showCodeViewer)) {
+        ImGui::Text("This window shows the code for your game project created with this editor.");
+        ImGui::Text("Game logic, scripts, components, and scene files are displayed here.");
+        ImGui::Separator();
+        
+        // Refresh button
+        if (ImGui::Button("Refresh Code Files")) {
+            m_codeFilesLoaded = false;
+            loadCodeFiles();
+            m_codeFilesLoaded = true;
+        }
+        
+        ImGui::SameLine();
+        if (ImGui::Button("Create Game Directory")) {
+            createGameDirectoryStructure();
+        }
+        
+        ImGui::SameLine();
+        ImGui::Text("Files: %d", (int)m_codeFiles.size());
+        
+        // Create two-pane layout
+        ImGui::BeginChild("CodeFileList", ImVec2(250, 0), true);
+        
+        // File list
+        ImGui::Text("Game Code Files:");
+        ImGui::Separator();
+        
+        for (int i = 0; i < m_codeFiles.size(); i++) {
+            const auto& file = m_codeFiles[i];
+            
+            // Color code different file types
+            ImVec4 color = ImVec4(1.0f, 1.0f, 1.0f, 1.0f); // Default white
+            std::string ext = "";
+            size_t dotPos = file.filename.find_last_of('.');
+            if (dotPos != std::string::npos) {
+                ext = file.filename.substr(dotPos);
+            }
+            
+            if (ext == ".h" || ext == ".hpp") {
+                color = ImVec4(0.7f, 0.9f, 1.0f, 1.0f); // Light blue for headers
+            } else if (ext == ".cpp" || ext == ".c") {
+                color = ImVec4(0.9f, 1.0f, 0.7f, 1.0f); // Light green for C++ source
+            } else if (ext == ".lua") {
+                color = ImVec4(1.0f, 0.8f, 0.6f, 1.0f); // Orange for Lua scripts
+            } else if (ext == ".js") {
+                color = ImVec4(1.0f, 1.0f, 0.6f, 1.0f); // Yellow for JavaScript
+            } else if (ext == ".py") {
+                color = ImVec4(0.6f, 1.0f, 0.8f, 1.0f); // Light cyan for Python
+            } else if (ext == ".json" || ext == ".scene") {
+                color = ImVec4(0.9f, 0.7f, 1.0f, 1.0f); // Light purple for data files
+            } else if (ext == ".cs") {
+                color = ImVec4(0.8f, 1.0f, 0.9f, 1.0f); // Light mint for C#
+            }
+            
+            ImGui::PushStyleColor(ImGuiCol_Text, color);
+            
+            bool isSelected = (i == m_selectedCodeFile);
+            if (ImGui::Selectable(file.filename.c_str(), isSelected)) {
+                m_selectedCodeFile = i;
+            }
+            
+            ImGui::PopStyleColor();
+            
+            // Tooltip with full path
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("%s", file.path.c_str());
+            }
+        }
+        
+        ImGui::EndChild();
+        
+        ImGui::SameLine();
+        
+        // Code content
+        ImGui::BeginChild("CodeContent", ImVec2(0, 0), true);
+        
+        if (m_selectedCodeFile >= 0 && m_selectedCodeFile < m_codeFiles.size()) {
+            const auto& selectedFile = m_codeFiles[m_selectedCodeFile];
+            
+            ImGui::Text("File: %s", selectedFile.path.c_str());
+            ImGui::Text("Lines: %d", (int)std::count(selectedFile.content.begin(), selectedFile.content.end(), '\n') + 1);
+            ImGui::Separator();
+            
+            // Code content with syntax highlighting (basic)
+            ImGui::PushFont(ImGui::GetIO().FontDefault);
+            
+            // Use InputTextMultiline for better code display
+            ImGui::InputTextMultiline("##code", const_cast<char*>(selectedFile.content.c_str()), 
+                                    selectedFile.content.size(), ImVec2(-1, -1), 
+                                    ImGuiInputTextFlags_ReadOnly | ImGuiInputTextFlags_AllowTabInput);
+            
+            ImGui::PopFont();
+        } else {
+            ImGui::Text("Select a file to view its content.");
+        }
+        
+        ImGui::EndChild();
+    }
+    ImGui::End();
 }
 
 // Window state management implementation
@@ -1934,11 +2679,13 @@ void GameEditor::openSceneInNewWindow() {
     auto renderSystem = scene->registerSystem<RenderSystem>();
     auto physicsSystem = scene->registerSystem<PhysicsSystem>();
     auto collisionSystem = scene->registerSystem<CollisionSystem>();
+    auto particleSystem = scene->registerSystem<ParticleSystem>();
     
     // Set scene pointer for each system
     renderSystem->setScene(scene.get());
     physicsSystem->setScene(scene.get());
     collisionSystem->setScene(scene.get());
+    particleSystem->setScene(scene.get());
     
     // Set system signatures
     ComponentMask renderSignature;
@@ -1955,6 +2702,11 @@ void GameEditor::openSceneInNewWindow() {
     collisionSignature.set(scene->getComponentType<Transform>());
     collisionSignature.set(scene->getComponentType<Collider>());
     scene->setSystemSignature<CollisionSystem>(collisionSignature);
+    
+    ComponentMask particleSignature;
+    particleSignature.set(scene->getComponentType<Transform>());
+    particleSignature.set(scene->getComponentType<ParticleEffect>());
+    scene->setSystemSignature<ParticleSystem>(particleSignature);
     
     std::string title = "Scene " + std::to_string(m_nextSceneWindowId++);
     openSceneInNewWindow(scene, title);
@@ -2023,6 +2775,461 @@ void GameEditor::updateActiveSceneData() {
         m_currentScene = nullptr;
         m_selectedEntity = 0;
         m_hasSelectedEntity = false;
+    }
+}
+
+void GameEditor::loadCodeFiles() {
+    m_codeFiles.clear();
+    
+    // Define directories to scan for user-created game code
+    std::vector<std::string> gameCodeDirs = {
+        "game",           // Main game code directory
+        "game/scripts",   // Game scripts and logic
+        "game/entities",  // Custom entity definitions
+        "game/components", // Custom game components
+        "game/systems",   // Custom game systems
+        "game/scenes",    // Scene-specific code
+        "assets/scripts", // Asset-based scripts
+        "scripts"         // Alternative scripts directory
+    };
+    
+    // Look for game-specific files in the project root
+    std::vector<std::string> gameCodeFiles = {
+        "game.cpp",
+        "game.h",
+        "GameLogic.cpp",
+        "GameLogic.h",
+        "PlayerController.cpp",
+        "PlayerController.h"
+    };
+    
+    auto loadFile = [this](const std::string& filepath) {
+        std::ifstream file(filepath);
+        if (!file.is_open()) return;
+        
+        CodeFile codeFile;
+        codeFile.path = filepath;
+        codeFile.filename = std::filesystem::path(filepath).filename().string();
+        codeFile.isGameCode = true;
+        
+        // Read file content
+        std::stringstream buffer;
+        buffer << file.rdbuf();
+        codeFile.content = buffer.str();
+        
+        m_codeFiles.push_back(std::move(codeFile));
+    };
+    
+    // Load individual game files from project root
+    for (const auto& filepath : gameCodeFiles) {
+        if (std::filesystem::exists(filepath)) {
+            loadFile(filepath);
+        }
+    }
+    
+    // Load files from game directories
+    for (const auto& dir : gameCodeDirs) {
+        if (!std::filesystem::exists(dir)) continue;
+        
+        try {
+            for (const auto& entry : std::filesystem::recursive_directory_iterator(dir)) {
+                if (entry.is_regular_file()) {
+                    std::string filepath = entry.path().string();
+                    std::string extension = entry.path().extension().string();
+                    
+                    // Include various script and code file types
+                    if (extension == ".cpp" || extension == ".h" || extension == ".hpp" ||
+                        extension == ".lua" || extension == ".js" || extension == ".py" ||
+                        extension == ".cs" || extension == ".txt") {
+                        loadFile(filepath);
+                    }
+                }
+            }
+        } catch (const std::filesystem::filesystem_error& ex) {
+            std::string errorMsg = "Error scanning directory " + dir + ": " + ex.what();
+            m_consoleMessages.push_back(errorMsg);
+        }
+    }
+    
+    // Also scan scene files for embedded logic
+    if (std::filesystem::exists("assets/scenes")) {
+        try {
+            for (const auto& entry : std::filesystem::recursive_directory_iterator("assets/scenes")) {
+                if (entry.is_regular_file()) {
+                    std::string filepath = entry.path().string();
+                    std::string extension = entry.path().extension().string();
+                    
+                    if (extension == ".json" || extension == ".scene") {
+                        loadFile(filepath);
+                    }
+                }
+            }
+        } catch (const std::filesystem::filesystem_error& ex) {
+            std::string errorMsg = "Error scanning scenes directory: " + std::string(ex.what());
+            m_consoleMessages.push_back(errorMsg);
+        }
+    }
+    
+    // If no game code found, create example templates
+    if (m_codeFiles.empty()) {
+        createExampleGameCode();
+    }
+    
+    // Sort files by name for better organization
+    std::sort(m_codeFiles.begin(), m_codeFiles.end(), 
+              [](const CodeFile& a, const CodeFile& b) {
+                  return a.filename < b.filename;
+              });
+    
+    std::string msg = "Loaded " + std::to_string(m_codeFiles.size()) + " game code files";
+    m_consoleMessages.push_back(msg);
+}
+
+void GameEditor::createExampleGameCode() {
+    // Create example game code templates to show what the viewer is for
+    
+    CodeFile gameHeader;
+    gameHeader.path = "game/GameLogic.h (Template)";
+    gameHeader.filename = "GameLogic.h";
+    gameHeader.isGameCode = true;
+    gameHeader.content = R"(#pragma once
+
+#include "core/Engine.h" 
+#include "components/Components.h"
+
+// Main game logic class
+// This is where you implement your game's core mechanics
+class GameLogic {
+public:
+    GameLogic();
+    ~GameLogic();
+    
+    void initialize();
+    void update(float deltaTime);
+    void render();
+    void shutdown();
+    
+    // Game-specific methods
+    void setupPlayer();
+    void setupEnemies();
+    void handleCollisions();
+    void updateGameState();
+    
+private:
+    EntityID m_player;
+    std::vector<EntityID> m_enemies;
+    int m_score;
+    bool m_gameRunning;
+};
+
+// Custom game components
+struct PlayerComponent {
+    float health = 100.0f;
+    float speed = 200.0f;
+    int lives = 3;
+};
+
+struct EnemyComponent {
+    float damage = 10.0f;
+    float speed = 100.0f;
+    bool isActive = true;
+};
+)";
+    
+    CodeFile gameSource;
+    gameSource.path = "game/GameLogic.cpp (Template)";
+    gameSource.filename = "GameLogic.cpp";
+    gameSource.isGameCode = true;
+    gameSource.content = R"(#include "GameLogic.h"
+#include "systems/CoreSystems.h"
+
+GameLogic::GameLogic() 
+    : m_player(0), m_score(0), m_gameRunning(false) {
+}
+
+GameLogic::~GameLogic() {
+}
+
+void GameLogic::initialize() {
+    m_gameRunning = true;
+    m_score = 0;
+    
+    setupPlayer();
+    setupEnemies();
+    
+    std::cout << "Game initialized!" << std::endl;
+}
+
+void GameLogic::update(float deltaTime) {
+    if (!m_gameRunning) return;
+    
+    updateGameState();
+    handleCollisions();
+    
+    // Update score display, etc.
+}
+
+void GameLogic::render() {
+    // Custom rendering logic here
+    // UI, effects, etc.
+}
+
+void GameLogic::setupPlayer() {
+    auto& engine = Engine::getInstance();
+    auto scene = engine.getCurrentScene();
+    
+    if (scene) {
+        m_player = scene->createEntity();
+        scene->setEntityName(m_player, "Player");
+        
+        // Add components
+        scene->addComponent<Transform>(m_player, Transform(0, 0));
+        scene->addComponent<PlayerComponent>(m_player, PlayerComponent());
+        
+        // Add sprite if you have player texture
+        // scene->addComponent<Sprite>(m_player, playerSprite);
+    }
+}
+
+void GameLogic::setupEnemies() {
+    // Create enemies, populate game world
+    // This is where your game-specific setup goes
+}
+
+void GameLogic::handleCollisions() {
+    // Game-specific collision handling
+    // Player vs enemies, bullets vs targets, etc.
+}
+
+void GameLogic::updateGameState() {
+    // Update game state, check win conditions, etc.
+}
+)";
+
+    CodeFile playerController;
+    playerController.path = "game/PlayerController.cpp (Template)";
+    playerController.filename = "PlayerController.cpp"; 
+    playerController.isGameCode = true;
+    playerController.content = R"(#include "PlayerController.h"
+#include "input/InputManager.h"
+
+void PlayerController::update(EntityID player, float deltaTime) {
+    auto& inputManager = InputManager::getInstance();
+    auto scene = Engine::getInstance().getCurrentScene();
+    
+    if (!scene || !scene->hasComponent<Transform>(player)) return;
+    
+    auto& transform = scene->getComponent<Transform>(player);
+    auto& playerComp = scene->getComponent<PlayerComponent>(player);
+    
+    // Movement input
+    Vector2 movement(0, 0);
+    
+    if (inputManager.isKeyPressed(SDLK_w) || inputManager.isKeyPressed(SDLK_UP)) {
+        movement.y -= 1.0f;
+    }
+    if (inputManager.isKeyPressed(SDLK_s) || inputManager.isKeyPressed(SDLK_DOWN)) {
+        movement.y += 1.0f;
+    }
+    if (inputManager.isKeyPressed(SDLK_a) || inputManager.isKeyPressed(SDLK_LEFT)) {
+        movement.x -= 1.0f;
+    }
+    if (inputManager.isKeyPressed(SDLK_d) || inputManager.isKeyPressed(SDLK_RIGHT)) {
+        movement.x += 1.0f;
+    }
+    
+    // Apply movement
+    if (movement.x != 0 || movement.y != 0) {
+        // Normalize diagonal movement
+        float length = sqrt(movement.x * movement.x + movement.y * movement.y);
+        movement.x /= length;
+        movement.y /= length;
+        
+        transform.position.x += movement.x * playerComp.speed * deltaTime;
+        transform.position.y += movement.y * playerComp.speed * deltaTime;
+    }
+    
+    // Action input
+    if (inputManager.isKeyPressed(SDLK_SPACE)) {
+        // Shoot, jump, interact, etc.
+        performAction(player);
+    }
+}
+
+void PlayerController::performAction(EntityID player) {
+    // Implement player actions here
+    // Shooting, jumping, interacting with objects, etc.
+}
+)";
+
+    CodeFile sceneScript;
+    sceneScript.path = "assets/scenes/level1.scene (Example)";
+    sceneScript.filename = "level1.scene";
+    sceneScript.isGameCode = true;
+    sceneScript.content = R"({
+  "name": "Level 1",
+  "entities": [
+    {
+      "id": 1,
+      "name": "Player",
+      "components": {
+        "Transform": {
+          "position": { "x": 100, "y": 100 },
+          "scale": { "x": 1, "y": 1 },
+          "rotation": 0
+        },
+        "Sprite": {
+          "texture": "assets/textures/player.png",
+          "visible": true
+        },
+        "PlayerComponent": {
+          "health": 100,
+          "speed": 200,
+          "lives": 3
+        }
+      }
+    },
+    {
+      "id": 2,
+      "name": "Enemy1",
+      "components": {
+        "Transform": {
+          "position": { "x": 300, "y": 150 },
+          "scale": { "x": 1, "y": 1 },
+          "rotation": 0
+        },
+        "Sprite": {
+          "texture": "assets/textures/enemy.png",
+          "visible": true
+        },
+        "EnemyComponent": {
+          "damage": 10,
+          "speed": 100,
+          "isActive": true
+        }
+      }
+    }
+  ],
+  "systems": [
+    "RenderSystem",
+    "PhysicsSystem", 
+    "PlayerControllerSystem",
+    "EnemyAISystem"
+  ]
+}
+)";
+
+    // Add all template files
+    m_codeFiles.push_back(std::move(gameHeader));
+    m_codeFiles.push_back(std::move(gameSource));
+    m_codeFiles.push_back(std::move(playerController));
+    m_codeFiles.push_back(std::move(sceneScript));
+    
+    m_consoleMessages.push_back("No game code found - showing example templates");
+    m_consoleMessages.push_back("Create files in 'game/' directory to see your actual game code");
+}
+
+void GameEditor::createGameDirectoryStructure() {
+    try {
+        // Create game directory structure
+        std::vector<std::string> directories = {
+            "game",
+            "game/scripts",
+            "game/entities", 
+            "game/components",
+            "game/systems",
+            "game/scenes"
+        };
+        
+        for (const auto& dir : directories) {
+            if (!std::filesystem::exists(dir)) {
+                std::filesystem::create_directories(dir);
+                m_consoleMessages.push_back("Created directory: " + dir);
+            }
+        }
+        
+        // Create starter game files
+        createStarterGameFiles();
+        
+        m_consoleMessages.push_back("Game directory structure created successfully!");
+        
+        // Refresh the code files to show new structure
+        m_codeFilesLoaded = false;
+        loadCodeFiles();
+        m_codeFilesLoaded = true;
+        
+    } catch (const std::filesystem::filesystem_error& ex) {
+        m_consoleMessages.push_back("Error creating game directories: " + std::string(ex.what()));
+    }
+}
+
+void GameEditor::createStarterGameFiles() {
+    // Create basic GameLogic.h file
+    std::string gameLogicH = R"(#pragma once
+
+// Your game's main logic class
+// Implement your game mechanics, rules, and state management here
+
+class GameLogic {
+public:
+    GameLogic();
+    ~GameLogic();
+    
+    void initialize();
+    void update(float deltaTime);
+    void shutdown();
+    
+private:
+    // Add your game state variables here
+    bool m_gameRunning;
+    int m_score;
+};
+)";
+
+    std::string gameLogicCpp = R"(#include "GameLogic.h"
+#include <iostream>
+
+GameLogic::GameLogic() : m_gameRunning(false), m_score(0) {
+}
+
+GameLogic::~GameLogic() {
+}
+
+void GameLogic::initialize() {
+    m_gameRunning = true;
+    m_score = 0;
+    std::cout << "Game initialized!" << std::endl;
+    
+    // TODO: Initialize your game here
+    // Create entities, setup scene, etc.
+}
+
+void GameLogic::update(float deltaTime) {
+    if (!m_gameRunning) return;
+    
+    // TODO: Update your game logic here
+    // Handle input, update entities, check collisions, etc.
+}
+
+void GameLogic::shutdown() {
+    m_gameRunning = false;
+    std::cout << "Game shutdown. Final score: " << m_score << std::endl;
+}
+)";
+
+    // Write files
+    try {
+        std::ofstream headerFile("game/GameLogic.h");
+        headerFile << gameLogicH;
+        headerFile.close();
+        
+        std::ofstream sourceFile("game/GameLogic.cpp");
+        sourceFile << gameLogicCpp;
+        sourceFile.close();
+        
+        m_consoleMessages.push_back("Created starter files: GameLogic.h and GameLogic.cpp");
+    } catch (const std::exception& ex) {
+        m_consoleMessages.push_back("Error creating starter files: " + std::string(ex.what()));
     }
 }
 
@@ -2099,4 +3306,176 @@ std::string GameEditor::openFolderDialog(const std::string& initialPath) {
     m_consoleMessages.push_back("Folder dialog not implemented for this platform");
     return "";
 #endif
+}
+
+void GameEditor::spawnEntityFromTemplate(EntityID spawnerEntity, EntitySpawner& spawner, float currentTime) {
+    if (!m_activeSceneWindow || !m_activeSceneWindow->getScene()) {
+        return;
+    }
+    
+    Scene* scene = m_activeSceneWindow->getScene().get();
+    
+    // Check if spawner is ready
+    if (!spawner.isReady(currentTime)) {
+        return;
+    }
+    
+    // Get the selected template
+    if (spawner.selectedTemplate < 0 || spawner.selectedTemplate >= static_cast<int>(spawner.templates.size())) {
+        return;
+    }
+    
+    const auto& spawnTemplate = spawner.templates[spawner.selectedTemplate];
+    
+    // Check if this is a template entity reference
+    if (spawnTemplate.spriteFile.find("TEMPLATE_ENTITY_") == 0) {
+        // Extract template entity ID
+        std::string idStr = spawnTemplate.spriteFile.substr(16); // Remove "TEMPLATE_ENTITY_" prefix
+        try {
+            EntityID templateEntityId = static_cast<EntityID>(std::stoul(idStr));
+            
+            // Clone the template entity
+            EntityID newEntity = cloneEntity(scene, templateEntityId);
+            if (newEntity != 0) {
+                // Get spawner position for spawning offset
+                Vector2 spawnerPos = {0, 0};
+                if (scene->hasComponent<Transform>(spawnerEntity)) {
+                    auto& spawnerTransform = scene->getComponent<Transform>(spawnerEntity);
+                    spawnerPos = spawnerTransform.position;
+                }
+                
+                // Apply spawn offset
+                if (scene->hasComponent<Transform>(newEntity)) {
+                    auto& newTransform = scene->getComponent<Transform>(newEntity);
+                    newTransform.position.x = spawnerPos.x + spawnTemplate.spawnOffset.x;
+                    newTransform.position.y = spawnerPos.y + spawnTemplate.spawnOffset.y;
+                    newTransform.scale = spawnTemplate.scale;
+                }
+                
+                // Apply velocity if RigidBody component exists
+                if (scene->hasComponent<RigidBody>(newEntity)) {
+                    auto& rigidBody = scene->getComponent<RigidBody>(newEntity);
+                    rigidBody.velocity = spawnTemplate.velocity;
+                }
+                
+                // Update spawner state
+                spawner.lastSpawnTime = currentTime;
+                spawner.spawnCount++;
+                
+                // Mark scene as dirty
+                m_activeSceneWindow->setDirty(true);
+                
+                printf("DEBUG: Spawned entity %u from template entity %u through spawner entity %u\n", 
+                       newEntity, templateEntityId, spawnerEntity);
+            }
+        } catch (const std::exception& e) {
+            printf("ERROR: Failed to parse template entity ID from '%s': %s\n", 
+                   spawnTemplate.spriteFile.c_str(), e.what());
+        }
+    } else {
+        // Regular template spawning (existing logic)
+        EntityID newEntity = scene->createEntity();
+        scene->setEntityName(newEntity, spawnTemplate.name);
+        
+        // Get spawner position
+        Vector2 spawnerPos = {0, 0};
+        if (scene->hasComponent<Transform>(spawnerEntity)) {
+            auto& spawnerTransform = scene->getComponent<Transform>(spawnerEntity);
+            spawnerPos = spawnerTransform.position;
+        }
+        
+        // Add Transform component
+        Transform transform;
+        transform.position.x = spawnerPos.x + spawnTemplate.spawnOffset.x;
+        transform.position.y = spawnerPos.y + spawnTemplate.spawnOffset.y;
+        transform.scale = spawnTemplate.scale;
+        scene->addComponent<Transform>(newEntity, transform);
+        
+        // Add Sprite component if sprite file is specified
+        if (!spawnTemplate.spriteFile.empty() && spawnTemplate.spriteFile != "TEMPLATE_ENTITY_") {
+            Sprite sprite;
+            // sprite.texture = m_resourceManager->getTexture(spawnTemplate.spriteFile);
+            scene->addComponent<Sprite>(newEntity, sprite);
+        }
+        
+        // Add RigidBody component with velocity if needed
+        if (spawnTemplate.hasRigidBody) {
+            RigidBody rigidBody;
+            rigidBody.velocity = spawnTemplate.velocity;
+            scene->addComponent<RigidBody>(newEntity, rigidBody);
+        }
+        
+        // Add Collider if specified
+        if (spawnTemplate.hasCollider) {
+            Collider collider;
+            collider.size = Vector2(32, 32); // Default size
+            scene->addComponent<Collider>(newEntity, collider);
+        }
+        
+        // Add LifeTime component if specified (comment out for now since LifeTime may not exist)
+        /*
+        if (spawnTemplate.lifeTime > 0.0f) {
+            LifeTime lifeTime;
+            lifeTime.duration = spawnTemplate.lifeTime;
+            lifeTime.startTime = currentTime;
+            scene->addComponent<LifeTime>(newEntity, lifeTime);
+        }
+        */
+        
+        // Update spawner state
+        spawner.lastSpawnTime = currentTime;
+        spawner.spawnCount++;
+        
+        // Mark scene as dirty
+        m_activeSceneWindow->setDirty(true);
+        
+        printf("DEBUG: Spawned regular entity %u from template '%s' through spawner entity %u\n", 
+               newEntity, spawnTemplate.name.c_str(), spawnerEntity);
+    }
+}
+
+EntityID GameEditor::cloneEntity(Scene* scene, EntityID sourceEntity) {
+    if (!scene || sourceEntity == 0) {
+        return 0;
+    }
+    
+    // Create new entity with similar name
+    std::string sourceName = scene->getEntityName(sourceEntity);
+    std::string newName = sourceName + "_Clone";
+    EntityID newEntity = scene->createEntity();
+    scene->setEntityName(newEntity, newName);
+    
+    // Copy Transform component
+    if (scene->hasComponent<Transform>(sourceEntity)) {
+        auto& sourceTransform = scene->getComponent<Transform>(sourceEntity);
+        scene->addComponent<Transform>(newEntity, sourceTransform);
+    }
+    
+    // Copy Sprite component
+    if (scene->hasComponent<Sprite>(sourceEntity)) {
+        auto& sourceSprite = scene->getComponent<Sprite>(sourceEntity);
+        scene->addComponent<Sprite>(newEntity, sourceSprite);
+    }
+    
+    // Copy RigidBody component  
+    if (scene->hasComponent<RigidBody>(sourceEntity)) {
+        auto& sourceRigidBody = scene->getComponent<RigidBody>(sourceEntity);
+        scene->addComponent<RigidBody>(newEntity, sourceRigidBody);
+    }
+    
+    // Copy Collider component
+    if (scene->hasComponent<Collider>(sourceEntity)) {
+        auto& sourceCollider = scene->getComponent<Collider>(sourceEntity);
+        scene->addComponent<Collider>(newEntity, sourceCollider);
+    }
+    
+    // Copy ParticleEffect component
+    if (scene->hasComponent<ParticleEffect>(sourceEntity)) {
+        auto& sourceParticleEffect = scene->getComponent<ParticleEffect>(sourceEntity);
+        scene->addComponent<ParticleEffect>(newEntity, sourceParticleEffect);
+    }
+    
+    // Don't copy EntitySpawner component to avoid recursive spawning
+    
+    return newEntity;
 }

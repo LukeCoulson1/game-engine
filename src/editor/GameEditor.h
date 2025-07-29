@@ -8,9 +8,12 @@
 #include "NodeEditor.h"
 #include "SceneManager.h"
 #include "GameLogicWindow.h"
+#include "CollisionEditorWindow.h"
 #include <SDL2/SDL.h>
 #include <memory>
 #include <vector>
+#include <string>
+#include <filesystem>
 
 // ImGui includes
 #include <imgui.h>
@@ -47,6 +50,8 @@ public:
     void showNodeEditor();
     void showSceneManager();
     void showGameLogicWindow();
+    void showCollisionEditor();
+    void showCodeViewer();
     
     // Editor functionality
     void createNewScene();
@@ -70,6 +75,12 @@ public:
     // Internal helper methods
     void updateActiveSceneData();
     std::string openFolderDialog(const std::string& initialPath = "");
+    void loadCodeFiles();
+    void createExampleGameCode();
+    void createGameDirectoryStructure();
+    void createStarterGameFiles();
+    void spawnEntityFromTemplate(EntityID spawnerEntity, EntitySpawner& spawner, float currentTime);
+    EntityID cloneEntity(Scene* scene, EntityID sourceEntity);
       // Editor state
     bool m_running = false;
     std::shared_ptr<Scene> m_currentScene;
@@ -90,6 +101,8 @@ public:
     bool m_showProceduralGeneration = true;    bool m_showNodeEditor = false;
     bool m_showSceneManager = false;
     bool m_showGameLogicWindow = false;
+    bool m_showCollisionEditor = true;
+    bool m_showCodeViewer = false;
     bool m_showDemo = false;
       // Console
     std::vector<std::string> m_consoleMessages;
@@ -109,6 +122,9 @@ public:
     // Game Logic Window
     std::unique_ptr<GameLogicWindow> m_gameLogicWindow;
     
+    // Collision Editor Window
+    std::unique_ptr<CollisionEditorWindow> m_collisionEditor;
+    
     // Rename dialog state
     bool m_showRenameDialog = false;
     EntityID m_renamingEntity = 0;
@@ -117,4 +133,15 @@ public:
     // Procedural generation
     std::unique_ptr<ProceduralGenerationManager> m_proceduralManager;
     std::shared_ptr<ProceduralMap> m_currentMap;
+    
+    // Code viewer
+    struct CodeFile {
+        std::string path;
+        std::string filename;
+        std::string content;
+        bool isGameCode;
+    };
+    std::vector<CodeFile> m_codeFiles;
+    int m_selectedCodeFile = 0;
+    bool m_codeFilesLoaded = false;
 };

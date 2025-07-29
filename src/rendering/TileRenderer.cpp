@@ -3,6 +3,7 @@
 #include "../utils/ResourceManager.h"
 #include <imgui.h>
 #include <algorithm>
+#include <iostream>
 
 TileRenderer::TileRenderer() {
 }
@@ -27,7 +28,7 @@ void TileRenderer::buildBatchesFromMap() {
     auto& engine = Engine::getInstance();
     auto resourceManager = engine.getResourceManager();
     if (!resourceManager) return;
-    
+
     std::unordered_map<std::string, TileBatch> batchMap;
     m_totalTileCount = 0;
     
@@ -48,6 +49,9 @@ void TileRenderer::buildBatchesFromMap() {
                     texture = resourceManager->loadTexture(tile.spriteName);
                     if (texture) {
                         m_textureCache[tile.spriteName] = texture;
+                        std::cout << "DEBUG: TileRenderer loaded texture: " << tile.spriteName << std::endl;
+                    } else {
+                        std::cout << "WARNING: TileRenderer failed to load texture: " << tile.spriteName << std::endl;
                     }
                 }
                 
@@ -71,14 +75,23 @@ void TileRenderer::buildBatchesFromMap() {
     for (auto& pair : batchMap) {
         m_tileBatches.push_back(std::move(pair.second));
     }
-}
-
-void TileRenderer::render(ImDrawList* drawList, const Vector2& cameraPos, const Vector2& viewportSize, 
-                         float zoomLevel, const Vector2& canvasPos) {
-    if (!m_map || m_tileBatches.empty()) return;
     
+    std::cout << "DEBUG: TileRenderer built " << m_tileBatches.size() << " batches with " << m_totalTileCount << " total tiles" << std::endl;
+}void TileRenderer::render(ImDrawList* drawList, const Vector2& cameraPos, const Vector2& viewportSize, 
+                         float zoomLevel, const Vector2& canvasPos) {
+    if (!m_map || m_tileBatches.empty()) {
+        if (!m_map) {
+            std::cout << "DEBUG: TileRenderer::render - no map set" << std::endl;
+        } else {
+            std::cout << "DEBUG: TileRenderer::render - no tile batches" << std::endl;
+        }
+        return;
+    }
+
     m_visibleTileCount = 0;
     float scaledTileSize = m_tileSize * zoomLevel;
+    
+    std::cout << "DEBUG: TileRenderer::render - " << m_tileBatches.size() << " batches, camera(" << cameraPos.x << "," << cameraPos.y << "), zoom=" << zoomLevel << std::endl;
     
     // Render each batch
     for (const auto& batch : m_tileBatches) {
@@ -95,7 +108,7 @@ void TileRenderer::render(ImDrawList* drawList, const Vector2& cameraPos, const 
             if (!isTileVisible(worldPos, cameraPos, viewportSize, zoomLevel, m_tileSize)) {
                 continue;
             }
-            
+
             m_visibleTileCount++;
             
             // Convert world position to screen position with zoom
@@ -115,6 +128,8 @@ void TileRenderer::render(ImDrawList* drawList, const Vector2& cameraPos, const 
             drawList->AddImage(textureID, imageMin, imageMax);
         }
     }
+    
+    std::cout << "DEBUG: TileRenderer::render - rendered " << m_visibleTileCount << " visible tiles" << std::endl;
 }
 
 bool TileRenderer::isTileVisible(const Vector2& tilePos, const Vector2& cameraPos, 

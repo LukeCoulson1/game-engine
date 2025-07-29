@@ -8,6 +8,10 @@
 #include <array>
 #include <vector>
 #include <string>
+#include <algorithm>
+#include <cmath>
+#include <random>
+#include "../graphics/Renderer.h"
 #include <functional>
 #include "graphics/Renderer.h" // Include for Vector2, Rect, Texture, Color
 
@@ -106,6 +110,26 @@ public:
     std::string name;
     
     Name(const std::string& n = "Entity") : name(n) {}
+};
+
+// Component to mark entities as procedurally generated
+class ProceduralGenerated : public Component {
+public:
+    enum class GenerationType {
+        ConvertedTile,      // Tile converted to entity via clicking
+        DirectGenerated,    // Entity created directly by procedural generator
+        GameplayElement     // Special gameplay entities (entrance, exit, etc.)
+    };
+    
+    GenerationType type;
+    int tileX = -1;        // Original tile coordinates (if applicable)
+    int tileY = -1;
+    
+    ProceduralGenerated(GenerationType genType = GenerationType::DirectGenerated) 
+        : type(genType) {}
+    
+    ProceduralGenerated(GenerationType genType, int x, int y) 
+        : type(genType), tileX(x), tileY(y) {}
 };
 
 // Player control schemes and input handling
@@ -619,5 +643,852 @@ private:
             default:
                 break;
         }
+    }
+};
+
+// Entity Spawner component - allows entities to spawn other entities
+class EntitySpawner : public Component {
+public:
+    struct SpawnTemplate {
+        std::string name;           // Name for the spawned entity
+        std::string spriteFile;     // Optional sprite file path
+        Vector2 spawnOffset{0, 0};  // Offset from spawner position
+        Vector2 velocity{0, 0};     // Initial velocity for spawned entity
+        float lifeTime = 0.0f;      // Auto-destroy after this time (0 = permanent)
+        bool hasCollider = false;   // Should spawned entity have collider
+        bool hasRigidBody = false;  // Should spawned entity have physics
+        float scale = 1.0f;         // Scale multiplier for spawned entity
+        
+        SpawnTemplate() = default;
+        SpawnTemplate(const std::string& entityName, const std::string& sprite = "", 
+                      Vector2 offset = Vector2(0, 0), Vector2 vel = Vector2(0, 0))
+            : name(entityName), spriteFile(sprite), spawnOffset(offset), velocity(vel) {}
+    };
+    
+    std::vector<SpawnTemplate> templates;  // Available spawn templates
+    int selectedTemplate = 0;              // Currently selected template index
+    float cooldownTime = 0.5f;             // Time between spawns
+    float lastSpawnTime = 0.0f;            // Last time entity was spawned
+    bool canSpawn = true;                  // Enable/disable spawning
+    int maxSpawns = -1;                    // Max entities to spawn (-1 = unlimited)
+    int spawnCount = 0;                    // Current spawn count
+    Vector2 spawnDirection{1, 0};          // Direction to spawn entities
+    bool inheritVelocity = false;          // Should spawned entities inherit spawner's velocity
+    
+    EntitySpawner() {
+        // Add default arrow template for common use case
+        templates.emplace_back("Arrow", "", Vector2(20, 0), Vector2(200, 0));
+        templates.back().lifeTime = 3.0f;  // Arrows disappear after 3 seconds
+        templates.back().hasCollider = true;
+    }
+    
+    // Helper methods
+    bool isReady(float currentTime) const {
+        return canSpawn && 
+               (maxSpawns == -1 || spawnCount < maxSpawns) &&
+               (currentTime - lastSpawnTime >= cooldownTime);
+    }
+    
+    void updateLastSpawnTime(float currentTime) {
+        lastSpawnTime = currentTime;
+        spawnCount++;
+    }
+    
+    void addTemplate(const std::string& name, const std::string& sprite = "", 
+                     Vector2 offset = Vector2(0, 0), Vector2 velocity = Vector2(0, 0)) {
+        templates.emplace_back(name, sprite, offset, velocity);
+    }
+    
+    void clearTemplates() {
+        templates.clear();
+        selectedTemplate = 0;
+    }
+    
+    const SpawnTemplate* getCurrentTemplate() const {
+        if (selectedTemplate >= 0 && selectedTemplate < static_cast<int>(templates.size())) {
+            return &templates[selectedTemplate];
+        }
+        return nullptr;
+    }
+    
+    void reset() {
+        spawnCount = 0;
+        lastSpawnTime = 0.0f;
+    }
+};
+
+// Particle Effect component - allows entities to emit particles
+class ParticleEffect : public Component {
+public:
+    struct Particle {
+        Vector2 position{0, 0};
+        Vector2 velocity{0, 0};
+        Vector2 acceleration{0, 0};
+        Color color{255, 255, 255, 255};
+        float life = 1.0f;           // Current life remaining
+        float maxLife = 1.0f;        // Maximum life time
+        float size = 1.0f;           // Size multiplier
+        float rotation = 0.0f;       // Rotation in degrees
+        float rotationSpeed = 0.0f;  // Rotation speed per second
+        bool active = true;
+        
+        Particle() = default;
+        Particle(Vector2 pos, Vector2 vel, float lifetime = 1.0f) 
+            : position(pos), velocity(vel), life(lifetime), maxLife(lifetime) {}
+    };
+    
+    enum class EmissionShape {
+        Point,      // Emit from a single point
+        Circle,     // Emit from circle perimeter
+        Box,        // Emit from rectangle area
+        Cone        // Emit in a cone direction
+    };
+    
+    enum class BlendMode {
+        Normal,     // Standard alpha blending
+        Additive,   // Additive blending for fire/glow effects
+        Multiply    // Multiply blending for shadow effects
+    };
+    
+    // Emission properties
+    bool isEmitting = true;
+    bool continuous = true;      // Continuous emission vs burst
+    float emissionRate = 10.0f;  // Particles per second
+    int maxParticles = 100;      // Maximum particle count
+    float burstCount = 50;       // Particles in a burst
+    
+    // Particle lifetime
+    float minLifetime = 1.0f;
+    float maxLifetime = 3.0f;
+    
+    // Emission shape and area
+    EmissionShape shape = EmissionShape::Point;
+    Vector2 emissionSize{10, 10}; // Size of emission area (for Box/Circle)
+    float coneAngle = 45.0f;      // Cone angle in degrees
+    Vector2 direction{0, -1};     // Default emission direction (upward)
+    
+    // Velocity properties
+    Vector2 minVelocity{-50, -100};
+    Vector2 maxVelocity{50, -200};
+    Vector2 gravity{0, 98};       // Gravity acceleration
+    
+    // Visual properties
+    Color startColor{255, 255, 255, 255};
+    Color endColor{255, 255, 255, 0};     // Fade to transparent
+    float minSize = 1.0f;
+    float maxSize = 5.0f;
+    float sizeOverLife = 1.0f;    // Size multiplier over lifetime (1.0 = no change)
+    
+    // Rotation properties
+    float minRotation = 0.0f;
+    float maxRotation = 360.0f;
+    float minRotationSpeed = 0.0f;
+    float maxRotationSpeed = 180.0f;
+    
+    // Rendering
+    BlendMode blendMode = BlendMode::Normal;
+    std::shared_ptr<Texture> texture; // Optional texture (uses colored rectangles if null)
+    int renderLayer = 10;         // Higher than most sprites for overlay effect
+    
+    // Runtime data
+    std::vector<Particle> particles;
+    float emissionTimer = 0.0f;
+    float systemTime = 0.0f;      // Total time the system has been running
+    
+    // Control methods
+    void startEmission() { isEmitting = true; }
+    void stopEmission() { isEmitting = false; }
+    void burst() { emitParticles(static_cast<int>(burstCount)); }
+    void clear() { particles.clear(); }
+    
+    // Update method (called by particle system)
+    void update(float deltaTime, const Vector2& emitterPosition);
+    
+    // Utility methods
+    int getActiveParticleCount() const {
+        return static_cast<int>(std::count_if(particles.begin(), particles.end(), 
+            [](const Particle& p) { return p.active && p.life > 0; }));
+    }
+    
+    bool isDead() const {
+        return !isEmitting && getActiveParticleCount() == 0;
+    }
+    
+    // Preset configurations
+    void setupFireEffect() {
+        startColor = Color(255, 100, 0, 255);    // Orange
+        endColor = Color(255, 0, 0, 0);          // Red fading to transparent
+        minVelocity = Vector2(-30, -100);
+        maxVelocity = Vector2(30, -200);
+        gravity = Vector2(0, -50);               // Slight upward force
+        minLifetime = 0.5f;
+        maxLifetime = 2.0f;
+        shape = EmissionShape::Circle;
+        emissionSize = Vector2(20, 20);
+        blendMode = BlendMode::Additive;
+        renderLayer = 15;
+    }
+    
+    void setupSmokeEffect() {
+        startColor = Color(200, 200, 200, 150);  // Light gray
+        endColor = Color(100, 100, 100, 0);      // Dark gray fading out
+        minVelocity = Vector2(-20, -50);
+        maxVelocity = Vector2(20, -100);
+        gravity = Vector2(0, -20);               // Slight upward drift
+        minLifetime = 2.0f;
+        maxLifetime = 4.0f;
+        minSize = 2.0f;
+        maxSize = 8.0f;
+        sizeOverLife = 2.0f;                     // Particles grow over time
+        shape = EmissionShape::Circle;
+        emissionSize = Vector2(15, 15);
+        blendMode = BlendMode::Normal;
+    }
+    
+    void setupSparkEffect() {
+        startColor = Color(255, 255, 100, 255);  // Bright yellow
+        endColor = Color(255, 50, 0, 0);         // Orange red fading out
+        minVelocity = Vector2(-150, -150);
+        maxVelocity = Vector2(150, -50);
+        gravity = Vector2(0, 200);               // Strong downward gravity
+        minLifetime = 0.2f;
+        maxLifetime = 1.0f;
+        minSize = 0.5f;
+        maxSize = 2.0f;
+        emissionRate = 50.0f;
+        maxParticles = 50;
+        shape = EmissionShape::Point;
+        blendMode = BlendMode::Additive;
+        minRotationSpeed = -360.0f;
+        maxRotationSpeed = 360.0f;
+    }
+    
+    void setupMagicEffect() {
+        startColor = Color(150, 100, 255, 200);  // Purple
+        endColor = Color(255, 200, 255, 0);      // Light purple fading out
+        minVelocity = Vector2(-80, -80);
+        maxVelocity = Vector2(80, 80);
+        gravity = Vector2(0, 0);                 // No gravity
+        minLifetime = 1.0f;
+        maxLifetime = 3.0f;
+        minSize = 1.0f;
+        maxSize = 4.0f;
+        shape = EmissionShape::Circle;
+        emissionSize = Vector2(30, 30);
+        blendMode = BlendMode::Additive;
+        minRotationSpeed = -90.0f;
+        maxRotationSpeed = 90.0f;
+        continuous = true;
+        emissionRate = 20.0f;
+    }
+    
+private:
+    void emitParticles(int count);
+    Vector2 getRandomVelocity() const;
+    Vector2 getRandomPosition() const;
+    Color interpolateColor(const Color& start, const Color& end, float t) const;
+    float randomFloat(float min, float max) const;
+};
+
+//================================================================================
+// NPC AND AI COMPONENTS
+//================================================================================
+
+// NPC Controller for non-player character behavior
+class NPCController : public Component {
+public:
+    enum class NPCType {
+        Friendly,
+        Neutral,
+        Hostile,
+        Merchant,
+        QuestGiver
+    };
+    
+    enum class NPCState {
+        Idle,
+        Patrolling,
+        Chasing,
+        Attacking,
+        Fleeing,
+        Talking,
+        Dead
+    };
+    
+    NPCType type = NPCType::Neutral;
+    NPCState currentState = NPCState::Idle;
+    NPCState previousState = NPCState::Idle;
+    
+    float health = 100.0f;
+    float maxHealth = 100.0f;
+    float moveSpeed = 100.0f;
+    float detectionRange = 150.0f;
+    float attackRange = 50.0f;
+    float fleeHealthThreshold = 20.0f;
+    
+    EntityID targetEntity = 0;
+    Vector2 lastKnownTargetPosition{0, 0};
+    float stateTimer = 0.0f;
+    bool canInteract = true;
+    
+    std::string dialogueFile;
+    std::string questId;
+};
+
+// AI Behavior component for complex AI logic
+class AIBehavior : public Component {
+public:
+    enum class BehaviorType {
+        StateMachine,
+        BehaviorTree,
+        UtilityBased,
+        GoalOriented
+    };
+    
+    BehaviorType type = BehaviorType::StateMachine;
+    std::string behaviorScript;
+    std::unordered_map<std::string, float> parameters;
+    std::unordered_map<std::string, bool> flags;
+    
+    float aggroRadius = 100.0f;
+    float hearingRadius = 80.0f;
+    float fieldOfViewAngle = 60.0f;
+    
+    bool isAggressive = false;
+    bool canHearPlayer = true;
+    bool hasLineOfSight = false;
+};
+
+// AI State Machine component
+class AIStateMachine : public Component {
+public:
+    struct State {
+        std::string name;
+        std::function<void()> onEnter;
+        std::function<void(float)> onUpdate;
+        std::function<void()> onExit;
+        std::vector<std::string> transitions;
+    };
+    
+    std::unordered_map<std::string, State> states;
+    std::string currentState = "idle";
+    std::string previousState;
+    float stateTime = 0.0f;
+    
+    void addState(const std::string& name, const State& state) {
+        states[name] = state;
+    }
+    
+    void transitionTo(const std::string& newState) {
+        if (states.find(newState) != states.end()) {
+            if (states.find(currentState) != states.end()) {
+                states[currentState].onExit();
+            }
+            previousState = currentState;
+            currentState = newState;
+            stateTime = 0.0f;
+            states[currentState].onEnter();
+        }
+    }
+};
+
+// AI Pathfinding component
+class AIPathfinding : public Component {
+public:
+    struct PathNode {
+        Vector2 position;
+        float cost = 0.0f;
+        bool isBlocked = false;
+    };
+    
+    std::vector<Vector2> currentPath;
+    int currentPathIndex = 0;
+    Vector2 destination{0, 0};
+    float pathfindingRadius = 300.0f;
+    float nodeSpacing = 32.0f;
+    bool hasPath = false;
+    bool reachedDestination = true;
+    
+    void setDestination(const Vector2& dest) {
+        destination = dest;
+        hasPath = false;
+        reachedDestination = false;
+    }
+    
+    Vector2 getNextPathPoint() const {
+        if (currentPathIndex < currentPath.size()) {
+            return currentPath[currentPathIndex];
+        }
+        return destination;
+    }
+};
+
+// NPC Dialogue component
+class NPCDialogue : public Component {
+public:
+    struct DialogueOption {
+        std::string text;
+        std::string response;
+        std::string conditionScript;
+        std::string actionScript;
+        bool available = true;
+    };
+    
+    struct DialogueNode {
+        std::string text;
+        std::vector<DialogueOption> options;
+        std::string nextNode;
+        bool isEnd = false;
+    };
+    
+    std::unordered_map<std::string, DialogueNode> dialogueTree;
+    std::string currentNode = "start";
+    std::string npcName = "NPC";
+    bool dialogueActive = false;
+    bool hasSpokenBefore = false;
+    
+    void startDialogue() {
+        dialogueActive = true;
+        currentNode = hasSpokenBefore ? "greeting_repeat" : "greeting_first";
+        hasSpokenBefore = true;
+    }
+};
+
+// NPC Interaction component
+class NPCInteraction : public Component {
+public:
+    enum class InteractionType {
+        Talk,
+        Trade,
+        Quest,
+        Heal,
+        Custom
+    };
+    
+    InteractionType type = InteractionType::Talk;
+    float interactionRange = 64.0f;
+    bool canInteract = true;
+    std::string interactionPrompt = "Press E to interact";
+    std::string interactionScript;
+    
+    // Trading specific
+    std::vector<int> sellItems;
+    std::vector<int> buyItems;
+    float priceModifier = 1.0f;
+    
+    // Quest specific
+    std::string questId;
+    bool questCompleted = false;
+};
+
+//================================================================================
+// ENVIRONMENT COMPONENTS
+//================================================================================
+
+// Environment Collider for world geometry
+class EnvironmentCollider : public Component {
+public:
+    enum class ColliderShape {
+        Rectangle,
+        Circle,
+        Polygon,
+        Tilemap
+    };
+    
+    ColliderShape shape = ColliderShape::Rectangle;
+    Vector2 size{32, 32};
+    float radius = 16.0f;
+    std::vector<Vector2> vertices;
+    bool isOneWayPlatform = false;
+    bool isSlope = false;
+    float slopeAngle = 0.0f;
+};
+
+// Environment Trigger for area-based events
+class EnvironmentTrigger : public Component {
+public:
+    enum class TriggerType {
+        Enter,
+        Exit,
+        Stay,
+        Interact
+    };
+    
+    TriggerType type = TriggerType::Enter;
+    Vector2 size{64, 64};
+    bool triggerOnce = false;
+    bool hasTriggered = false;
+    std::string triggerScript;
+    std::vector<std::string> triggerTags;
+    
+    void reset() {
+        hasTriggered = false;
+    }
+};
+
+// Environment Hazard for damaging areas
+class EnvironmentHazard : public Component {
+public:
+    enum class HazardType {
+        Spikes,
+        Fire,
+        Poison,
+        Electric,
+        Ice,
+        Void
+    };
+    
+    HazardType type = HazardType::Spikes;
+    float damage = 10.0f;
+    float damageInterval = 1.0f;
+    float lastDamageTime = 0.0f;
+    bool instantKill = false;
+    std::string statusEffect;
+    float effectDuration = 0.0f;
+};
+
+// Environment Door for area transitions
+class EnvironmentDoor : public Component {
+public:
+    enum class DoorType {
+        Normal,
+        Locked,
+        Key,
+        Switch,
+        Timed
+    };
+    
+    DoorType type = DoorType::Normal;
+    bool isOpen = false;
+    bool canOpen = true;
+    std::string targetScene;
+    Vector2 targetPosition{0, 0};
+    
+    // Lock/key system
+    std::string requiredKey;
+    int requiredKeyCount = 1;
+    
+    // Switch system
+    std::string requiredSwitch;
+    
+    // Timed system
+    float openDuration = 5.0f;
+    float openTimer = 0.0f;
+    
+    void open() {
+        if (canOpen) {
+            isOpen = true;
+            if (type == DoorType::Timed) {
+                openTimer = openDuration;
+            }
+        }
+    }
+    
+    void close() {
+        isOpen = false;
+        openTimer = 0.0f;
+    }
+};
+
+// Environment Switch for activating mechanisms
+class EnvironmentSwitch : public Component {
+public:
+    enum class SwitchType {
+        Toggle,
+        Pressure,
+        Timed,
+        Lever
+    };
+    
+    SwitchType type = SwitchType::Toggle;
+    bool isActivated = false;
+    bool canActivate = true;
+    std::string switchId;
+    std::vector<std::string> connectedEntities;
+    
+    // Timed switches
+    float activeDuration = 5.0f;
+    float activeTimer = 0.0f;
+    
+    // Pressure switches
+    int requiredWeight = 1;
+    int currentWeight = 0;
+    
+    void activate() {
+        if (canActivate) {
+            isActivated = true;
+            if (type == SwitchType::Timed) {
+                activeTimer = activeDuration;
+            }
+        }
+    }
+    
+    void deactivate() {
+        isActivated = false;
+        activeTimer = 0.0f;
+    }
+};
+
+// Environment Platform for moving platforms
+class EnvironmentPlatform : public Component {
+public:
+    enum class PlatformType {
+        Static,
+        Moving,
+        Falling,
+        Rotating
+    };
+    
+    PlatformType type = PlatformType::Static;
+    std::vector<Vector2> waypoints;
+    int currentWaypoint = 0;
+    float moveSpeed = 50.0f;
+    bool looping = true;
+    bool pingPong = false;
+    bool movingForward = true;
+    
+    // Falling platform
+    float fallDelay = 1.0f;
+    float fallTimer = 0.0f;
+    bool isFalling = false;
+    bool resetAfterFall = true;
+    
+    // Rotating platform
+    float rotationSpeed = 45.0f; // degrees per second
+    Vector2 rotationCenter{0, 0};
+};
+
+//================================================================================
+// AUDIO AND EFFECTS COMPONENTS
+//================================================================================
+
+// Audio Source component
+class AudioSource : public Component {
+public:
+    std::string audioFile;
+    float volume = 1.0f;
+    float pitch = 1.0f;
+    bool loop = false;
+    bool playOnStart = false;
+    bool is3D = false;
+    bool isPlaying = false;
+    
+    // 3D audio properties
+    float minDistance = 10.0f;
+    float maxDistance = 100.0f;
+    float rolloffFactor = 1.0f;
+    
+    void play() {
+        isPlaying = true;
+    }
+    
+    void stop() {
+        isPlaying = false;
+    }
+    
+    void pause() {
+        // Implementation would pause the audio
+    }
+};
+
+// Audio Listener component (usually on player/camera)
+class AudioListener : public Component {
+public:
+    Vector2 forward{0, -1}; // Forward direction for 3D audio
+    Vector2 up{0, 1};       // Up direction for 3D audio
+    float masterVolume = 1.0f;
+    bool active = true;
+};
+
+// Visual Effect component
+class VisualEffect : public Component {
+public:
+    enum class EffectType {
+        Explosion,
+        Smoke,
+        Fire,
+        Lightning,
+        Magic,
+        Blood,
+        Sparkles
+    };
+    
+    EffectType type = EffectType::Explosion;
+    float duration = 1.0f;
+    float currentTime = 0.0f;
+    bool autoDestroy = true;
+    bool loop = false;
+    
+    // Visual properties
+    Color startColor{255, 255, 255, 255};
+    Color endColor{255, 255, 255, 0};
+    float startScale = 1.0f;
+    float endScale = 2.0f;
+    
+    bool isFinished() const {
+        return !loop && currentTime >= duration;
+    }
+};
+
+// Light Source component
+class LightSource : public Component {
+public:
+    enum class LightType {
+        Point,
+        Directional,
+        Spot
+    };
+    
+    LightType type = LightType::Point;
+    Color color{255, 255, 255, 255};
+    float intensity = 1.0f;
+    float range = 100.0f;
+    Vector2 direction{0, -1}; // For directional/spot lights
+    float spotAngle = 45.0f;  // For spot lights
+    
+    bool castShadows = false;
+    bool enabled = true;
+    
+    // Dynamic light properties
+    bool flicker = false;
+    float flickerSpeed = 5.0f;
+    float flickerIntensity = 0.2f;
+    float flickerTimer = 0.0f;
+};
+
+//================================================================================
+// UI COMPONENTS
+//================================================================================
+
+// Base UI Element component
+class UIElement : public Component {
+public:
+    enum class AnchorType {
+        TopLeft,
+        TopCenter,
+        TopRight,
+        CenterLeft,
+        Center,
+        CenterRight,
+        BottomLeft,
+        BottomCenter,
+        BottomRight
+    };
+    
+    AnchorType anchor = AnchorType::TopLeft;
+    Vector2 offset{0, 0};
+    Vector2 size{100, 30};
+    bool visible = true;
+    bool interactive = true;
+    int zIndex = 0;
+    
+    Color backgroundColor{50, 50, 50, 200};
+    Color borderColor{100, 100, 100, 255};
+    float borderWidth = 1.0f;
+};
+
+// UI Button component
+class UIButton : public Component {
+public:
+    std::string text = "Button";
+    Color normalColor{70, 70, 70, 200};
+    Color hoverColor{90, 90, 90, 200};
+    Color pressedColor{50, 50, 50, 200};
+    Color textColor{255, 255, 255, 255};
+    
+    bool isHovered = false;
+    bool isPressed = false;
+    bool wasClicked = false;
+    
+    std::function<void()> onClick;
+    
+    void click() {
+        wasClicked = true;        if (onClick) {
+            onClick();
+        }
+    }
+};
+
+// UI Text component
+class UIText : public Component {
+public:
+    std::string text = "Text";
+    Color color{255, 255, 255, 255};
+    int fontSize = 16;
+    std::string fontFamily = "default";
+    
+    enum class Alignment {
+        Left,
+        Center,
+        Right
+    };
+    
+    Alignment alignment = Alignment::Left;
+    bool wordWrap = false;
+    float lineSpacing = 1.0f;
+};
+
+// UI Image component
+class UIImage : public Component {
+public:
+    std::shared_ptr<Texture> texture;
+    Color tint{255, 255, 255, 255};
+    Rect sourceRect; // For sprite sheets
+    
+    enum class ScaleMode {
+        Stretch,
+        KeepAspect,
+        Crop
+    };
+    
+    ScaleMode scaleMode = ScaleMode::Stretch;
+};
+
+// UI Health Bar component
+class UIHealthBar : public Component {
+public:
+    float currentValue = 100.0f;
+    float maxValue = 100.0f;
+    Color fillColor{255, 0, 0, 255};
+    Color backgroundColor{50, 50, 50, 200};
+    Color borderColor{100, 100, 100, 255};
+    
+    bool showText = true;
+    bool showPercentage = false;
+    bool animateChanges = true;
+    float animationSpeed = 2.0f;
+    
+    float getPercentage() const {
+        return maxValue > 0 ? (currentValue / maxValue) : 0.0f;
+    }
+};
+
+// UI Inventory Slot component
+class UIInventorySlot : public Component {
+public:
+    int slotIndex = 0;
+    int itemId = 0;
+    int itemCount = 0;
+    bool isEmpty = true;
+    bool isSelected = false;
+    bool isHighlighted = false;
+    
+    Color emptyColor{40, 40, 40, 200};
+    Color filledColor{60, 60, 60, 200};
+    Color selectedColor{100, 150, 255, 200};
+    Color highlightColor{255, 255, 100, 100};
+    
+    std::function<void(int)> onSlotClicked;
+    
+    void setItem(int id, int count) {
+        itemId = id;
+        itemCount = count;
+        isEmpty = (count <= 0);
+    }
+    
+    void clearItem() {
+        itemId = 0;
+        itemCount = 0;
+        isEmpty = true;
     }
 };

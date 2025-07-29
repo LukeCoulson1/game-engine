@@ -60,3 +60,19 @@ private:
     PlayerSystem* m_playerSystem = nullptr;
     const Uint8* m_keyboardState = nullptr;
 };
+
+// Particle system for managing particle effects
+class ParticleSystem : public System {
+public:
+    ParticleSystem() = default;
+    
+    void update(float deltaTime) override;
+    void render(Renderer* renderer) override;
+    void setScene(Scene* scene) { m_scene = scene; }
+
+private:
+    Scene* m_scene = nullptr;
+    
+    void renderParticle(Renderer* renderer, const ParticleEffect::Particle& particle, 
+                       const Vector2& position, std::shared_ptr<Texture> texture);
+};
