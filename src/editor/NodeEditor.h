@@ -313,6 +313,11 @@ namespace NodeEditor {
         bool canExecute() const;
         void reset();
         
+        // Specialized execution methods
+        void executeMathNode();
+        void executeLogicNode();  
+        void executeEventNode();
+        
         // Parameter accessors
         void setFloatParam(const std::string& name, float value);
         void setIntParam(const std::string& name, int value);
