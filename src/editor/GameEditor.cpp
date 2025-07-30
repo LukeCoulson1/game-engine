@@ -30,13 +30,13 @@ GameEditor::GameEditor() {
     
     // Initialize procedural generation manager
     m_proceduralManager = std::make_unique<ProceduralGenerationManager>();
-      // Initialize node editor
-    m_nodeEditor = std::make_unique<NodeEditor::NodeEditorWindow>();    // Initialize scene manager
+      // Temporarily disable node editor to test for crashes
+    // m_nodeEditor = std::make_unique<NodeEditor::NodeEditorWindow>();    // Initialize scene manager
     
     // Set up callback for code refresh
-    m_nodeEditor->setCodeRefreshCallback([this]() {
-        this->loadCodeFiles();
-    });
+    // m_nodeEditor->setCodeRefreshCallback([this]() {
+    //     this->loadCodeFiles();
+    // });
     
     m_sceneManager = std::make_unique<SceneManager>(this);
     
@@ -84,8 +84,9 @@ bool GameEditor::initialize() {
     ImGui_ImplSDL2_InitForSDLRenderer(SDL_GetWindowFromID(1), renderer->getSDLRenderer());
     ImGui_ImplSDLRenderer2_Init(renderer->getSDLRenderer());
     
-    // Don't create a default scene window on startup
-    // Users can open scenes via Scene Manager when needed
+    // Create a default scene window with an empty scene on startup
+    auto defaultScene = std::make_shared<Scene>();
+    openSceneInNewWindow(defaultScene, "Initial Scene");
     
     m_running = true;
     return true;
@@ -174,7 +175,9 @@ void GameEditor::renderUI() {    showMainMenuBar();
     if (m_showAssetBrowser) showAssetBrowser();
     if (m_showConsole) showConsole();
     if (m_showCameraControls) showCameraControls();
-    if (m_showProceduralGeneration) showProceduralGeneration();    if (m_showNodeEditor) showNodeEditor();
+    if (m_showProceduralGeneration) showProceduralGeneration();    
+    // Temporarily disable node editor to test for crashes
+    // if (m_showNodeEditor) showNodeEditor();
     if (m_showSceneManager) showSceneManager();
     if (m_showGameLogicWindow) showGameLogicWindow();
     if (m_showCollisionEditor) showCollisionEditor();
@@ -186,7 +189,9 @@ void GameEditor::renderUI() {    showMainMenuBar();
         if (sceneWindow->isOpen()) {
             sceneWindow->render();
         }
-    }    // Clean up closed windows
+    }
+    
+    // Clean up closed windows
     bool activeWindowWasClosed = false;
     size_t windowsBeforeCleanup = m_sceneWindows.size();
     m_sceneWindows.erase(
@@ -336,13 +341,25 @@ void GameEditor::showSceneHierarchy() {
         return;
     }
     
-    bool hasActiveScene = (m_activeSceneWindow && m_activeSceneWindow->isOpen() && m_activeSceneWindow->getScene());    if (ImGui::Button("Create Entity") && hasActiveScene) {
+    bool hasActiveScene = (m_activeSceneWindow && m_activeSceneWindow->isOpen() && m_activeSceneWindow->getScene());
+    
+    if (ImGui::Button("Create Entity") && hasActiveScene) {
         auto scene = m_activeSceneWindow->getScene();
+        m_consoleMessages.push_back("DEBUG: About to create entity...");
+        std::cout << "DEBUG: About to create entity..." << std::endl;
+        
         EntityID entity = scene->createEntity();
+        m_consoleMessages.push_back("DEBUG: Created entity ID: " + std::to_string(entity));
+        std::cout << "DEBUG: Created entity ID: " << entity << std::endl;
+        
         scene->addComponent<Transform>(entity, Transform(0.0f, 0.0f));
+        m_consoleMessages.push_back("DEBUG: Added Transform component");
+        std::cout << "DEBUG: Added Transform component" << std::endl;
         
         std::string defaultName = "Entity_" + std::to_string(entity);
         scene->setEntityName(entity, defaultName);
+        m_consoleMessages.push_back("DEBUG: Set entity name: " + defaultName);
+        std::cout << "DEBUG: Set entity name: " << defaultName << std::endl;
         
         m_activeSceneWindow->setSelectedEntity(entity);
         m_activeSceneWindow->setDirty(true);
@@ -351,6 +368,7 @@ void GameEditor::showSceneHierarchy() {
         std::string debugMsg = "Created entity: " + defaultName + " in " + m_activeSceneWindow->getTitle() + 
                               " (Entity ID: " + std::to_string(entity) + ", Window ID: " + std::to_string(reinterpret_cast<uintptr_t>(m_activeSceneWindow)) + ")";
         m_consoleMessages.push_back(debugMsg);
+        std::cout << debugMsg << std::endl;
     }
     ImGui::SameLine();
     if (ImGui::Button("Delete Entity") && hasActiveScene && m_activeSceneWindow->hasSelectedEntity()) {
@@ -1314,17 +1332,24 @@ void GameEditor::showInspector() {
             
             if (ImGui::Button("Create Sprite Entity", ImVec2(-1, 0))) {
                 if (scene) {
+                    m_consoleMessages.push_back("DEBUG: Creating sprite entity...");
+                    
                     EntityID newEntity = scene->createEntity();
+                    m_consoleMessages.push_back("DEBUG: Created entity ID: " + std::to_string(newEntity));
+                    
                     scene->setEntityName(newEntity, std::string(entityNameBuffer) + "_Sprite");
+                    m_consoleMessages.push_back("DEBUG: Set entity name");
                     
                     Vector2 spawnPos = spawnAtCamera ? m_activeSceneWindow->getCameraPosition() : Vector2(spawnPosX, spawnPosY);
                     scene->addComponent<Transform>(newEntity, Transform(spawnPos));
+                    m_consoleMessages.push_back("DEBUG: Added Transform component");
                     
                     // Add sprite component
                     Sprite sprite;
                     sprite.visible = true;
                     sprite.layer = 0;
                     scene->addComponent<Sprite>(newEntity, sprite);
+                    m_consoleMessages.push_back("DEBUG: Added Sprite component");
                     
                     m_activeSceneWindow->applyGridFittingToEntity(newEntity);
                     m_activeSceneWindow->setSelectedEntity(newEntity);
@@ -1336,21 +1361,36 @@ void GameEditor::showInspector() {
             
             if (ImGui::Button("Create Player Entity", ImVec2(-1, 0))) {
                 if (scene) {
+                    m_consoleMessages.push_back("DEBUG: Creating player entity...");
+                    
                     EntityID newEntity = scene->createEntity();
+                    m_consoleMessages.push_back("DEBUG: Created entity ID: " + std::to_string(newEntity));
+                    
                     scene->setEntityName(newEntity, std::string(entityNameBuffer) + "_Player");
+                    m_consoleMessages.push_back("DEBUG: Set entity name");
                     
                     Vector2 spawnPos = spawnAtCamera ? m_activeSceneWindow->getCameraPosition() : Vector2(spawnPosX, spawnPosY);
                     scene->addComponent<Transform>(newEntity, Transform(spawnPos));
+                    m_consoleMessages.push_back("DEBUG: Added Transform component");
                     
                     // Add all player components
                     Sprite sprite;
                     sprite.visible = true;
                     sprite.layer = 1;
                     scene->addComponent<Sprite>(newEntity, sprite);
+                    m_consoleMessages.push_back("DEBUG: Added Sprite component");
+                    
                     scene->addComponent<Collider>(newEntity, Collider());
+                    m_consoleMessages.push_back("DEBUG: Added Collider component");
+                    
                     scene->addComponent<RigidBody>(newEntity, RigidBody());
+                    m_consoleMessages.push_back("DEBUG: Added RigidBody component");
+                    
                     scene->addComponent<PlayerController>(newEntity, PlayerController());
+                    m_consoleMessages.push_back("DEBUG: Added PlayerController component");
+                    
                     scene->addComponent<PlayerStats>(newEntity, PlayerStats());
+                    m_consoleMessages.push_back("DEBUG: Added PlayerStats component");
                     
                     m_activeSceneWindow->applyGridFittingToEntity(newEntity);
                     m_activeSceneWindow->setSelectedEntity(newEntity);
@@ -1812,12 +1852,19 @@ void GameEditor::createNewScene() {
     auto physicsSystem = m_currentScene->registerSystem<PhysicsSystem>();
     auto collisionSystem = m_currentScene->registerSystem<CollisionSystem>();
     auto particleSystem = m_currentScene->registerSystem<ParticleSystem>();
+    auto lightSystem = m_currentScene->registerSystem<LightSystem>();
+    auto audioSystem = m_currentScene->registerSystem<AudioSystem>();
     
     // Set scene pointer for each system
     renderSystem->setScene(m_currentScene.get());
     physicsSystem->setScene(m_currentScene.get());
     collisionSystem->setScene(m_currentScene.get());
     particleSystem->setScene(m_currentScene.get());
+    lightSystem->setScene(m_currentScene.get());
+    audioSystem->setScene(m_currentScene.get());
+    
+    // Initialize audio system
+    audioSystem->initialize();
     
     // Set system signatures
     ComponentMask renderSignature;
@@ -1839,6 +1886,19 @@ void GameEditor::createNewScene() {
     particleSignature.set(m_currentScene->getComponentType<Transform>());
     particleSignature.set(m_currentScene->getComponentType<ParticleEffect>());
     m_currentScene->setSystemSignature<ParticleSystem>(particleSignature);
+    
+    // Temporarily disable new system signatures to test for crashes
+    /*
+    ComponentMask lightSignature;
+    lightSignature.set(m_currentScene->getComponentType<Transform>());
+    lightSignature.set(m_currentScene->getComponentType<LightSource>());
+    m_currentScene->setSystemSignature<LightSystem>(lightSignature);
+    
+    ComponentMask audioSignature;
+    audioSignature.set(m_currentScene->getComponentType<Transform>());
+    audioSignature.set(m_currentScene->getComponentType<AudioSource>());
+    m_currentScene->setSystemSignature<AudioSystem>(audioSignature);
+    */
     
     m_consoleMessages.push_back("Created new scene");
 }
@@ -2680,12 +2740,19 @@ void GameEditor::openSceneInNewWindow() {
     auto physicsSystem = scene->registerSystem<PhysicsSystem>();
     auto collisionSystem = scene->registerSystem<CollisionSystem>();
     auto particleSystem = scene->registerSystem<ParticleSystem>();
+    auto lightSystem = scene->registerSystem<LightSystem>();
+    auto audioSystem = scene->registerSystem<AudioSystem>();
     
     // Set scene pointer for each system
     renderSystem->setScene(scene.get());
     physicsSystem->setScene(scene.get());
     collisionSystem->setScene(scene.get());
     particleSystem->setScene(scene.get());
+    lightSystem->setScene(scene.get());
+    audioSystem->setScene(scene.get());
+    
+    // Initialize audio system
+    audioSystem->initialize();
     
     // Set system signatures
     ComponentMask renderSignature;
@@ -2707,6 +2774,19 @@ void GameEditor::openSceneInNewWindow() {
     particleSignature.set(scene->getComponentType<Transform>());
     particleSignature.set(scene->getComponentType<ParticleEffect>());
     scene->setSystemSignature<ParticleSystem>(particleSignature);
+    
+    // Temporarily disable new system signatures to test for crashes
+    /*
+    ComponentMask lightSignature;
+    lightSignature.set(scene->getComponentType<Transform>());
+    lightSignature.set(scene->getComponentType<LightSource>());
+    scene->setSystemSignature<LightSystem>(lightSignature);
+    
+    ComponentMask audioSignature;
+    audioSignature.set(scene->getComponentType<Transform>());
+    audioSignature.set(scene->getComponentType<AudioSource>());
+    scene->setSystemSignature<AudioSystem>(audioSignature);
+    */
     
     std::string title = "Scene " + std::to_string(m_nextSceneWindowId++);
     openSceneInNewWindow(scene, title);

@@ -61,6 +61,7 @@ file(GLOB_RECURSE ENGINE_SOURCES
     "src/utils/*.cpp"
     "src/generation/*.cpp"
     "src/rendering/*.cpp"
+    "src/tools/*.cpp"
 )
 
 # Editor source files

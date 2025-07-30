@@ -1131,6 +1131,676 @@ namespace NodeEditor {
         size.y = std::max(minSize.y, std::min(maxSize.y, newSize.y));
     }
 
+    // ====== NODE EXECUTION SYSTEM ======
+    void Node::execute() {
+        if (executed) return;
+        
+        switch (type) {
+            // ====== MATH NODES ======
+            case NodeType::MathAdd: {
+                float a = getFloatParam("A", 0.0f);
+                float b = getFloatParam("B", 0.0f);
+                float result = a + b;
+                setFloatParam("Result", result);
+                printf("DEBUG: MathAdd executed: %.2f + %.2f = %.2f\n", a, b, result);
+                break;
+            }
+            
+            case NodeType::MathSubtract: {
+                float a = getFloatParam("A", 0.0f);
+                float b = getFloatParam("B", 0.0f);
+                float result = a - b;
+                setFloatParam("Result", result);
+                printf("DEBUG: MathSubtract executed: %.2f - %.2f = %.2f\n", a, b, result);
+                break;
+            }
+            
+            case NodeType::MathMultiply: {
+                float a = getFloatParam("A", 1.0f);
+                float b = getFloatParam("B", 1.0f);
+                float result = a * b;
+                setFloatParam("Result", result);
+                printf("DEBUG: MathMultiply executed: %.2f * %.2f = %.2f\n", a, b, result);
+                break;
+            }
+            
+            case NodeType::MathDivide: {
+                float a = getFloatParam("A", 1.0f);
+                float b = getFloatParam("B", 1.0f);
+                float result = (b != 0.0f) ? a / b : 0.0f;
+                setFloatParam("Result", result);
+                printf("DEBUG: MathDivide executed: %.2f / %.2f = %.2f\n", a, b, result);
+                break;
+            }
+            
+            case NodeType::MathMin: {
+                float a = getFloatParam("A", 0.0f);
+                float b = getFloatParam("B", 0.0f);
+                float result = std::min(a, b);
+                setFloatParam("Result", result);
+                printf("DEBUG: MathMin executed: min(%.2f, %.2f) = %.2f\n", a, b, result);
+                break;
+            }
+            
+            case NodeType::MathMax: {
+                float a = getFloatParam("A", 0.0f);
+                float b = getFloatParam("B", 0.0f);
+                float result = std::max(a, b);
+                setFloatParam("Result", result);
+                printf("DEBUG: MathMax executed: max(%.2f, %.2f) = %.2f\n", a, b, result);
+                break;
+            }
+            
+            case NodeType::MathSin: {
+                float value = getFloatParam("Value", 0.0f);
+                float result = std::sin(value);
+                setFloatParam("Result", result);
+                printf("DEBUG: MathSin executed: sin(%.2f) = %.2f\n", value, result);
+                break;
+            }
+            
+            case NodeType::MathCos: {
+                float value = getFloatParam("Value", 0.0f);
+                float result = std::cos(value);
+                setFloatParam("Result", result);
+                printf("DEBUG: MathCos executed: cos(%.2f) = %.2f\n", value, result);
+                break;
+            }
+            
+            case NodeType::MathAbs: {
+                float value = getFloatParam("Value", 0.0f);
+                float result = std::abs(value);
+                setFloatParam("Result", result);
+                printf("DEBUG: MathAbs executed: abs(%.2f) = %.2f\n", value, result);
+                break;
+            }
+            
+            case NodeType::MathClamp: {
+                float value = getFloatParam("Value", 0.0f);
+                float minVal = getFloatParam("Min", 0.0f);
+                float maxVal = getFloatParam("Max", 1.0f);
+                float result = std::clamp(value, minVal, maxVal);
+                setFloatParam("Result", result);
+                printf("DEBUG: MathClamp executed: clamp(%.2f, %.2f, %.2f) = %.2f\n", value, minVal, maxVal, result);
+                break;
+            }
+            
+            case NodeType::MathLerp: {
+                float a = getFloatParam("A", 0.0f);
+                float b = getFloatParam("B", 1.0f);
+                float t = getFloatParam("T", 0.5f);
+                float result = a + t * (b - a);
+                setFloatParam("Result", result);
+                printf("DEBUG: MathLerp executed: lerp(%.2f, %.2f, %.2f) = %.2f\n", a, b, t, result);
+                break;
+            }
+            
+            case NodeType::RandomFloat: {
+                float minVal = getFloatParam("Min", 0.0f);
+                float maxVal = getFloatParam("Max", 1.0f);
+                static std::random_device rd;
+                static std::mt19937 gen(rd());
+                std::uniform_real_distribution<float> dis(minVal, maxVal);
+                float result = dis(gen);
+                setFloatParam("Random", result);
+                printf("DEBUG: RandomFloat executed: random(%.2f, %.2f) = %.2f\n", minVal, maxVal, result);
+                break;
+            }
+            
+            case NodeType::RandomInt: {
+                int minVal = getIntParam("Min", 0);
+                int maxVal = getIntParam("Max", 100);
+                static std::random_device rd;
+                static std::mt19937 gen(rd());
+                std::uniform_int_distribution<int> dis(minVal, maxVal);
+                int result = dis(gen);
+                setIntParam("Random", result);
+                printf("DEBUG: RandomInt executed: random(%d, %d) = %d\n", minVal, maxVal, result);
+                break;
+            }
+            
+            // ====== LOGIC NODES ======
+            case NodeType::LogicAND: {
+                bool a = getBoolParam("A", false);
+                bool b = getBoolParam("B", false);
+                bool result = a && b;
+                setBoolParam("Result", result);
+                printf("DEBUG: LogicAND executed: %s AND %s = %s\n", 
+                       a ? "true" : "false", b ? "true" : "false", result ? "true" : "false");
+                break;
+            }
+            
+            case NodeType::LogicOR: {
+                bool a = getBoolParam("A", false);
+                bool b = getBoolParam("B", false);
+                bool result = a || b;
+                setBoolParam("Result", result);
+                printf("DEBUG: LogicOR executed: %s OR %s = %s\n", 
+                       a ? "true" : "false", b ? "true" : "false", result ? "true" : "false");
+                break;
+            }
+            
+            case NodeType::LogicNOT: {
+                bool input = getBoolParam("Input", false);
+                bool result = !input;
+                setBoolParam("Result", result);
+                printf("DEBUG: LogicNOT executed: NOT %s = %s\n", 
+                       input ? "true" : "false", result ? "true" : "false");
+                break;
+            }
+            
+            case NodeType::LogicXOR: {
+                bool a = getBoolParam("A", false);
+                bool b = getBoolParam("B", false);
+                bool result = a != b;
+                setBoolParam("Result", result);
+                printf("DEBUG: LogicXOR executed: %s XOR %s = %s\n", 
+                       a ? "true" : "false", b ? "true" : "false", result ? "true" : "false");
+                break;
+            }
+            
+            case NodeType::Compare: {
+                float a = getFloatParam("A", 0.0f);
+                float b = getFloatParam("B", 0.0f);
+                setBoolParam("A > B", a > b);
+                setBoolParam("A < B", a < b);
+                setBoolParam("A == B", std::abs(a - b) < 0.001f);
+                printf("DEBUG: Compare executed: A=%.2f, B=%.2f\n", a, b);
+                break;
+            }
+            
+            // ====== UTILITY NODES ======
+            case NodeType::Print: {
+                std::string message = getStringParam("Message", "Hello World");
+                printf("PRINT NODE: %s\n", message.c_str());
+                break;
+            }
+            
+            case NodeType::Debug: {
+                std::string message = getStringParam("Debug Message", "Debug output");
+                printf("DEBUG NODE: %s\n", message.c_str());
+                break;
+            }
+            
+            // ====== COMPONENT NODES ======
+            case NodeType::Transform:
+            case NodeType::SpriteComponent:
+            case NodeType::Collider:
+            case NodeType::RigidBody:
+            case NodeType::PlayerController:
+            case NodeType::NPCController:
+                printf("DEBUG: Component node %s executed (data applied to entity)\n", name.c_str());
+                break;
+                
+            case NodeType::LightSource: {
+                // Create and configure light source component
+                if (componentData) {
+                    auto lightSource = std::dynamic_pointer_cast<LightSource>(componentData);
+                    if (lightSource) {
+                        // Update light properties from node parameters
+                        lightSource->intensity = getFloatParam("Intensity", 1.0f);
+                        lightSource->range = getFloatParam("Range", 100.0f);
+                        lightSource->color.r = static_cast<Uint8>(getFloatParam("Color.R", 255.0f));
+                        lightSource->color.g = static_cast<Uint8>(getFloatParam("Color.G", 255.0f));
+                        lightSource->color.b = static_cast<Uint8>(getFloatParam("Color.B", 255.0f));
+                        lightSource->enabled = getBoolParam("Enabled", true);
+                        lightSource->castShadows = getBoolParam("CastShadows", false);
+                        lightSource->flicker = getBoolParam("Flicker", false);
+                        lightSource->flickerSpeed = getFloatParam("FlickerSpeed", 5.0f);
+                        
+                        printf("DEBUG: LightSource executed - Intensity: %.2f, Range: %.2f, Color: (%d,%d,%d)\n",
+                               lightSource->intensity, lightSource->range, 
+                               lightSource->color.r, lightSource->color.g, lightSource->color.b);
+                    }
+                }
+                break;
+            }
+            
+            case NodeType::AudioSource: {
+                // Create and configure audio source component
+                if (componentData) {
+                    auto audioSource = std::dynamic_pointer_cast<AudioSource>(componentData);
+                    if (audioSource) {
+                        // Update audio properties from node parameters
+                        audioSource->audioFile = getStringParam("AudioFile", "");
+                        audioSource->volume = getFloatParam("Volume", 1.0f);
+                        audioSource->pitch = getFloatParam("Pitch", 1.0f);
+                        audioSource->loop = getBoolParam("Loop", false);
+                        audioSource->playOnStart = getBoolParam("PlayOnStart", false);
+                        audioSource->is3D = getBoolParam("3D", false);
+                        audioSource->minDistance = getFloatParam("MinDistance", 10.0f);
+                        audioSource->maxDistance = getFloatParam("MaxDistance", 100.0f);
+                        
+                        printf("DEBUG: AudioSource executed - File: %s, Volume: %.2f, 3D: %s\n",
+                               audioSource->audioFile.c_str(), audioSource->volume, 
+                               audioSource->is3D ? "true" : "false");
+                    }
+                }
+                break;
+            }
+            
+            case NodeType::ParticleSystem: {
+                // Create and configure particle effect component
+                if (componentData) {
+                    auto particleEffect = std::dynamic_pointer_cast<ParticleEffect>(componentData);
+                    if (particleEffect) {
+                        // Update particle properties from node parameters
+                        particleEffect->isEmitting = getBoolParam("Emitting", true);
+                        particleEffect->emissionRate = getFloatParam("EmissionRate", 10.0f);
+                        particleEffect->maxParticles = getIntParam("MaxParticles", 100);
+                        particleEffect->minLifetime = getFloatParam("MinLifetime", 1.0f);
+                        particleEffect->maxLifetime = getFloatParam("MaxLifetime", 3.0f);
+                        particleEffect->minSize = getFloatParam("MinSize", 1.0f);
+                        particleEffect->maxSize = getFloatParam("MaxSize", 5.0f);
+                        
+                        printf("DEBUG: ParticleSystem executed - Rate: %.2f, Max: %d, Lifetime: %.2f-%.2f\n",
+                               particleEffect->emissionRate, particleEffect->maxParticles,
+                               particleEffect->minLifetime, particleEffect->maxLifetime);
+                    }
+                }
+                break;
+            }
+                
+            // ====== CONSTANT NODES ======
+            case NodeType::ConstantFloat: {
+                float value = getFloatParam("Value", 0.0f);
+                setFloatParam("Output", value);
+                printf("DEBUG: ConstantFloat executed: %.2f\n", value);
+                break;
+            }
+            
+            case NodeType::ConstantInt: {
+                int value = getIntParam("Value", 0);
+                setIntParam("Output", value);
+                printf("DEBUG: ConstantInt executed: %d\n", value);
+                break;
+            }
+            
+            case NodeType::ConstantBool: {
+                bool value = getBoolParam("Value", false);
+                setBoolParam("Output", value);
+                printf("DEBUG: ConstantBool executed: %s\n", value ? "true" : "false");
+                break;
+            }
+            
+            case NodeType::ConstantString: {
+                std::string value = getStringParam("Value", "");
+                setStringParam("Output", value);
+                printf("DEBUG: ConstantString executed: %s\n", value.c_str());
+                break;
+            }
+            
+            // ====== VECTOR MATH NODES ======
+            case NodeType::ConstantVector2: {
+                float x = getFloatParam("X", 0.0f);
+                float y = getFloatParam("Y", 0.0f);
+                setFloatParam("Vector.X", x);
+                setFloatParam("Vector.Y", y);
+                printf("DEBUG: ConstantVector2 executed: (%.2f, %.2f)\n", x, y);
+                break;
+            }
+            
+            case NodeType::MathDistance: {
+                float ax = getFloatParam("A.X", 0.0f);
+                float ay = getFloatParam("A.Y", 0.0f);
+                float bx = getFloatParam("B.X", 0.0f);
+                float by = getFloatParam("B.Y", 0.0f);
+                float dx = ax - bx;
+                float dy = ay - by;
+                float distance = std::sqrt(dx*dx + dy*dy);
+                setFloatParam("Distance", distance);
+                printf("DEBUG: MathDistance executed: distance((%.2f,%.2f), (%.2f,%.2f)) = %.2f\n", 
+                       ax, ay, bx, by, distance);
+                break;
+            }
+            
+            case NodeType::MathNormalize: {
+                float x = getFloatParam("Vector.X", 0.0f);
+                float y = getFloatParam("Vector.Y", 0.0f);
+                float length = std::sqrt(x*x + y*y);
+                if (length > 0.0f) {
+                    setFloatParam("Result.X", x / length);
+                    setFloatParam("Result.Y", y / length);
+                } else {
+                    setFloatParam("Result.X", 0.0f);
+                    setFloatParam("Result.Y", 0.0f);
+                }
+                printf("DEBUG: MathNormalize executed: normalize(%.2f,%.2f)\n", x, y);
+                break;
+            }
+            
+            case NodeType::MathDotProduct: {
+                float ax = getFloatParam("A.X", 0.0f);
+                float ay = getFloatParam("A.Y", 0.0f);
+                float bx = getFloatParam("B.X", 0.0f);
+                float by = getFloatParam("B.Y", 0.0f);
+                float dot = ax * bx + ay * by;
+                setFloatParam("DotProduct", dot);
+                printf("DEBUG: MathDotProduct executed: dot((%.2f,%.2f), (%.2f,%.2f)) = %.2f\n", 
+                       ax, ay, bx, by, dot);
+                break;
+            }
+            
+            // ====== CONDITIONAL NODES ======
+            case NodeType::Branch: {
+                bool condition = getBoolParam("Condition", false);
+                if (condition) {
+                    setBoolParam("True", true);
+                    setBoolParam("False", false);
+                } else {
+                    setBoolParam("True", false);
+                    setBoolParam("False", true);
+                }
+                printf("DEBUG: Branch executed: condition=%s\n", condition ? "true" : "false");
+                break;
+            }
+            
+            case NodeType::Condition: {
+                float a = getFloatParam("A", 0.0f);
+                float b = getFloatParam("B", 0.0f);
+                std::string op = getStringParam("Operator", "==");
+                bool result = false;
+                
+                if (op == "==") result = std::abs(a - b) < 0.001f;
+                else if (op == "!=") result = std::abs(a - b) >= 0.001f;
+                else if (op == ">") result = a > b;
+                else if (op == ">=") result = a >= b;
+                else if (op == "<") result = a < b;
+                else if (op == "<=") result = a <= b;
+                
+                setBoolParam("Result", result);
+                printf("DEBUG: Condition executed: %.2f %s %.2f = %s\n", 
+                       a, op.c_str(), b, result ? "true" : "false");
+                break;
+            }
+            
+            // ====== GAME LOGIC NODES ======
+            case NodeType::DealDamage: {
+                float damage = getFloatParam("Damage", 10.0f);
+                int targetEntity = getIntParam("Target", 0);
+                printf("DEBUG: DealDamage executed: %d damage to entity %d\n", (int)damage, targetEntity);
+                // In a real implementation, this would modify the target entity's health component
+                break;
+            }
+            
+            case NodeType::HealEntity: {
+                float healing = getFloatParam("Healing", 10.0f);
+                int targetEntity = getIntParam("Target", 0);
+                printf("DEBUG: HealEntity executed: %d healing to entity %d\n", (int)healing, targetEntity);
+                // In a real implementation, this would modify the target entity's health component
+                break;
+            }
+            
+            case NodeType::CheckHealth: {
+                int targetEntity = getIntParam("Target", 0);
+                // In a real implementation, this would check the entity's health component
+                float currentHealth = 100.0f; // Placeholder
+                setFloatParam("CurrentHealth", currentHealth);
+                setBoolParam("IsAlive", currentHealth > 0.0f);
+                printf("DEBUG: CheckHealth executed: entity %d has %.0f health\n", targetEntity, currentHealth);
+                break;
+            }
+            
+            // ====== TIMER AND DELAY NODES ======
+            case NodeType::TimerNode: {
+                float duration = getFloatParam("Duration", 1.0f);
+                float elapsed = getFloatParam("Elapsed", 0.0f);
+                elapsed += 0.016f; // Assume 60 FPS for now
+                setFloatParam("Elapsed", elapsed);
+                setBoolParam("Finished", elapsed >= duration);
+                printf("DEBUG: TimerNode executed: %.2f/%.2f seconds\n", elapsed, duration);
+                break;
+            }
+            
+            case NodeType::Delay: {
+                float delayTime = getFloatParam("Delay", 1.0f);
+                float startTime = getFloatParam("StartTime", ImGui::GetTime());
+                float currentTime = ImGui::GetTime();
+                bool finished = (currentTime - startTime) >= delayTime;
+                setBoolParam("Finished", finished);
+                if (finished) {
+                    printf("DEBUG: Delay executed: delay of %.2f seconds completed\n", delayTime);
+                }
+                break;
+            }
+            
+            // ====== INPUT NODES ======
+            case NodeType::OnKeyPress: {
+                int keyCode = getIntParam("KeyCode", 0);
+                // In a real implementation, this would check actual input state
+                bool pressed = false; // Placeholder
+                setBoolParam("Pressed", pressed);
+                if (pressed) {
+                    printf("DEBUG: OnKeyPress executed: key %d pressed\n", keyCode);
+                }
+                break;
+            }
+            
+            case NodeType::OnMouseClick: {
+                int button = getIntParam("Button", 0); // 0=left, 1=right, 2=middle
+                // In a real implementation, this would check actual mouse state
+                bool clicked = false; // Placeholder
+                setBoolParam("Clicked", clicked);
+                if (clicked) {
+                    printf("DEBUG: OnMouseClick executed: button %d clicked\n", button);
+                }
+                break;
+            }
+            
+            case NodeType::MathPower: {
+                float base = getFloatParam("Base", 2.0f);
+                float exponent = getFloatParam("Exponent", 2.0f);
+                float result = std::pow(base, exponent);
+                setFloatParam("Result", result);
+                printf("DEBUG: MathPower executed: %.2f^%.2f = %.2f\n", base, exponent, result);
+                break;
+            }
+            
+            case NodeType::Switch: {
+                int selector = getIntParam("Selector", 0);
+                float input0 = getFloatParam("Input0", 0.0f);
+                float input1 = getFloatParam("Input1", 0.0f);
+                float input2 = getFloatParam("Input2", 0.0f);
+                float input3 = getFloatParam("Input3", 0.0f);
+                
+                float result = input0;
+                switch (selector) {
+                    case 0: result = input0; break;
+                    case 1: result = input1; break;
+                    case 2: result = input2; break;
+                    case 3: result = input3; break;
+                }
+                setFloatParam("Output", result);
+                printf("DEBUG: Switch executed: selector=%d, output=%.2f\n", selector, result);
+                break;
+            }
+            
+            // ====== MOVEMENT AND ANIMATION NODES ======
+            case NodeType::MoveTowards: {
+                float currentX = getFloatParam("Current.X", 0.0f);
+                float currentY = getFloatParam("Current.Y", 0.0f);
+                float targetX = getFloatParam("Target.X", 0.0f);
+                float targetY = getFloatParam("Target.Y", 0.0f);
+                float speed = getFloatParam("Speed", 1.0f);
+                float deltaTime = getFloatParam("DeltaTime", 0.016f);
+                
+                float dx = targetX - currentX;
+                float dy = targetY - currentY;
+                float distance = std::sqrt(dx*dx + dy*dy);
+                
+                if (distance > 0.0f) {
+                    float moveDistance = speed * deltaTime;
+                    if (moveDistance >= distance) {
+                        // Reached target
+                        setFloatParam("Result.X", targetX);
+                        setFloatParam("Result.Y", targetY);
+                        setBoolParam("ReachedTarget", true);
+                    } else {
+                        // Move towards target
+                        float nx = dx / distance;
+                        float ny = dy / distance;
+                        setFloatParam("Result.X", currentX + nx * moveDistance);
+                        setFloatParam("Result.Y", currentY + ny * moveDistance);
+                        setBoolParam("ReachedTarget", false);
+                    }
+                }
+                printf("DEBUG: MoveTowards executed: moving from (%.2f,%.2f) to (%.2f,%.2f)\n", 
+                       currentX, currentY, targetX, targetY);
+                break;
+            }
+            
+            case NodeType::SpawnEntity: {
+                float x = getFloatParam("Position.X", 0.0f);
+                float y = getFloatParam("Position.Y", 0.0f);
+                int templateId = getIntParam("TemplateID", 0);
+                // In a real implementation, this would create a new entity
+                printf("DEBUG: SpawnEntity executed: spawning entity at (%.2f,%.2f) with template %d\n", 
+                       x, y, templateId);
+                setIntParam("SpawnedEntityID", 999); // Placeholder
+                break;
+            }
+            
+            case NodeType::DestroyEntity: {
+                int entityId = getIntParam("EntityID", 0);
+                // In a real implementation, this would destroy the entity
+                printf("DEBUG: DestroyEntity executed: destroying entity %d\n", entityId);
+                setBoolParam("Destroyed", true);
+                break;
+            }
+            
+            // ====== SEQUENCE AND FLOW CONTROL ======
+            case NodeType::Sequence: {
+                int currentStep = getIntParam("CurrentStep", 0);
+                int maxSteps = getIntParam("MaxSteps", 3);
+                bool stepTriggered = getBoolParam("StepTrigger", false);
+                
+                if (stepTriggered) {
+                    currentStep++;
+                    if (currentStep >= maxSteps) {
+                        currentStep = 0;
+                    }
+                    setIntParam("CurrentStep", currentStep);
+                    setBoolParam("Step" + std::to_string(currentStep), true);
+                    printf("DEBUG: Sequence executed: step %d of %d\n", currentStep, maxSteps);
+                }
+                break;
+            }
+            
+            case NodeType::PlaySound: {
+                std::string audioFile = getStringParam("AudioFile", "");
+                float volume = getFloatParam("Volume", 1.0f);
+                bool loop = getBoolParam("Loop", false);
+                int entityId = getIntParam("EntityID", 0);
+                
+                if (!audioFile.empty()) {
+                    printf("DEBUG: PlaySound executed - File: %s, Volume: %.2f, Entity: %d\n",
+                           audioFile.c_str(), volume, entityId);
+                    // In a real implementation, this would call the AudioSystem
+                    setBoolParam("Playing", true);
+                }
+                break;
+            }
+            
+            case NodeType::StopSound: {
+                int entityId = getIntParam("EntityID", 0);
+                printf("DEBUG: StopSound executed - Entity: %d\n", entityId);
+                // In a real implementation, this would call the AudioSystem
+                setBoolParam("Stopped", true);
+                break;
+            }
+            
+            case NodeType::Animate: {
+                float startValue = getFloatParam("StartValue", 0.0f);
+                float endValue = getFloatParam("EndValue", 1.0f);
+                float duration = getFloatParam("Duration", 1.0f);
+                float elapsed = getFloatParam("ElapsedTime", 0.0f);
+                
+                elapsed += 0.016f; // Assume 60 FPS
+                float progress = std::min(elapsed / duration, 1.0f);
+                float currentValue = startValue + (endValue - startValue) * progress;
+                
+                setFloatParam("ElapsedTime", elapsed);
+                setFloatParam("CurrentValue", currentValue);
+                setBoolParam("Finished", progress >= 1.0f);
+                
+                printf("DEBUG: Animate executed - Progress: %.2f%%, Value: %.2f\n", 
+                       progress * 100.0f, currentValue);
+                break;
+            }
+                
+            default:
+                printf("DEBUG: Node type %d execution not implemented yet\n", static_cast<int>(type));
+                break;
+        }
+        
+        executed = true;
+        executionTime = ImGui::GetTime();
+    }
+
+    bool Node::canExecute() const {
+        // Check if all required input pins have data or connections
+        for (const auto& pin : inputPins) {
+            if (pin.type == PinType::Input && !pin.connected) {
+                // For some nodes, unconnected inputs are OK (they use default values)
+                switch (type) {
+                    case NodeType::ConstantFloat:
+                    case NodeType::ConstantInt:
+                    case NodeType::ConstantBool:
+                    case NodeType::ConstantString:
+                    case NodeType::Print:
+                    case NodeType::Debug:
+                        continue; // These don't need input connections
+                    default:
+                        // For most nodes, we can execute with default values
+                        continue;
+                }
+            }
+        }
+        return true;
+    }
+
+    void Node::reset() {
+        executed = false;
+        executionTime = 0.0f;
+    }
+
+    // Parameter accessors
+    void Node::setFloatParam(const std::string& name, float value) {
+        floatParams[name] = value;
+    }
+
+    void Node::setIntParam(const std::string& name, int value) {
+        intParams[name] = value;
+    }
+
+    void Node::setBoolParam(const std::string& name, bool value) {
+        boolParams[name] = value;
+    }
+
+    void Node::setStringParam(const std::string& name, const std::string& value) {
+        stringParams[name] = value;
+    }
+
+    float Node::getFloatParam(const std::string& name, float defaultValue) const {
+        auto it = floatParams.find(name);
+        return (it != floatParams.end()) ? it->second : defaultValue;
+    }
+
+    int Node::getIntParam(const std::string& name, int defaultValue) const {
+        auto it = intParams.find(name);
+        return (it != intParams.end()) ? it->second : defaultValue;
+    }
+
+    bool Node::getBoolParam(const std::string& name, bool defaultValue) const {
+        auto it = boolParams.find(name);
+        return (it != boolParams.end()) ? it->second : defaultValue;
+    }
+
+    std::string Node::getStringParam(const std::string& name, const std::string& defaultValue) const {
+        auto it = stringParams.find(name);
+        return (it != stringParams.end()) ? it->second : defaultValue;
+    }
+
     NodeEditorWindow::NodeEditorWindow() {
     }
 
@@ -1176,6 +1846,16 @@ namespace NodeEditor {
                 ImGui::Separator();
                 if (ImGui::MenuItem("Export Node Graph")) {
                     exportNodeGraphAsCode();
+                }
+                ImGui::EndMenu();
+            }
+            
+            if (ImGui::BeginMenu("Execute")) {
+                if (ImGui::MenuItem("Execute Logic Graph")) {
+                    executeLogicGraph();
+                }
+                if (ImGui::MenuItem("Reset All Nodes")) {
+                    resetExecution();
                 }
                 ImGui::EndMenu();
             }
@@ -3408,23 +4088,60 @@ namespace NodeEditor {
             // Allow Entity nodes to connect to all component types through the single Entity pin
             // The Entity pin can connect to any component that accepts Entity input
             switch (inputNode->type) {
+                // Basic components
                 case NodeType::SpriteComponent:
                 case NodeType::Transform:
                 case NodeType::Rotation:
                 case NodeType::Scale:
                 case NodeType::Collider:
                 case NodeType::RigidBody:
+                
+                // Player components
                 case NodeType::PlayerController:
                 case NodeType::PlayerStats:
                 case NodeType::PlayerPhysics:
                 case NodeType::PlayerInventory:
                 case NodeType::PlayerAbilities:
                 case NodeType::PlayerState:
+                
+                // NPC and AI components
+                case NodeType::NPCController:
+                case NodeType::AIBehavior:
+                case NodeType::AIStateMachine:
+                case NodeType::AIPathfinding:
+                case NodeType::NPCDialogue:
+                case NodeType::NPCInteraction:
+                
+                // Environment components
+                case NodeType::EnvironmentCollider:
+                case NodeType::EnvironmentTrigger:
+                case NodeType::EnvironmentHazard:
+                case NodeType::EnvironmentDoor:
+                case NodeType::EnvironmentSwitch:
+                case NodeType::EnvironmentPlatform:
+                
+                // Audio and Effects components
+                case NodeType::AudioSource:
+                case NodeType::AudioListener:
+                case NodeType::ParticleSystem:
+                case NodeType::ParticleEmitter:
+                case NodeType::VisualEffect:
+                case NodeType::LightSource:
+                
+                // UI components
+                case NodeType::UIElement:
+                case NodeType::UIButton:
+                case NodeType::UIText:
+                case NodeType::UIImage:
+                case NodeType::UIHealthBar:
+                case NodeType::UIInventorySlot:
                     // All component nodes accept Entity input through their Entity input pin
+                    printf("DEBUG: Entity->%s connection check - ALLOWED\n", getNodeTypeName(inputNode->type).c_str());
                     return outputPin->dataType == PinDataType::Entity && inputPin->dataType == PinDataType::Entity;
                     
                 default:
                     // Unknown component type - don't allow connection
+                    printf("DEBUG: Entity->%s connection check - DENIED (unknown component type)\n", getNodeTypeName(inputNode->type).c_str());
                     return false;
             }
         }
@@ -3630,6 +4347,15 @@ namespace NodeEditor {
                 break;
             case NodeType::ParticleEffect:
                 componentData = std::make_shared<ParticleEffect>();
+                break;
+            case NodeType::ParticleSystem:
+                componentData = std::make_shared<ParticleEffect>();
+                break;
+            case NodeType::LightSource:
+                componentData = std::make_shared<LightSource>();
+                break;
+            case NodeType::AudioSource:
+                componentData = std::make_shared<AudioSource>();
                 break;
             default:
                 // Non-component nodes don't have component data
@@ -4677,6 +5403,142 @@ namespace NodeEditor {
         } catch (const std::exception& e) {
             printf("ERROR: Failed to save generated code files: %s\n", e.what());
         }
+    }
+
+    // ====== NODE EXECUTION SYSTEM ======
+    void NodeEditorWindow::executeLogicGraph() {
+        printf("DEBUG: Executing logic graph with %zu nodes\n", m_nodes.size());
+        
+        // First, reset all nodes
+        resetExecution();
+        
+        // Execute nodes in dependency order
+        std::set<int> executedNodes;
+        std::queue<Node*> nodesToExecute;
+        
+        // Start with nodes that have no input connections (source nodes)
+        for (auto& node : m_nodes) {
+            bool hasInputConnections = false;
+            for (const auto& pin : node->inputPins) {
+                if (pin.connected) {
+                    hasInputConnections = true;
+                    break;
+                }
+            }
+            
+            if (!hasInputConnections) {
+                switch (node->type) {
+                    case NodeType::ConstantFloat:
+                    case NodeType::ConstantInt:
+                    case NodeType::ConstantBool:
+                    case NodeType::ConstantString:
+                    case NodeType::OnKeyPress:
+                    case NodeType::OnMouseClick:
+                    case NodeType::TimerNode:
+                        nodesToExecute.push(node.get());
+                        break;
+                    default:
+                        break;
+                }
+            }
+        }
+        
+        // Execute nodes in waves, propagating data through connections
+        int maxIterations = 100; // Prevent infinite loops
+        int iteration = 0;
+        
+        while (!nodesToExecute.empty() && iteration < maxIterations) {
+            Node* currentNode = nodesToExecute.front();
+            nodesToExecute.pop();
+            
+            if (executedNodes.find(currentNode->id) == executedNodes.end()) {
+                executeNode(currentNode);
+                executedNodes.insert(currentNode->id);
+                
+                // Add connected nodes to execution queue
+                for (const auto& pin : currentNode->outputPins) {
+                    if (pin.connected) {
+                        // Find the connected node
+                        for (auto& targetNode : m_nodes) {
+                            for (const auto& inputPin : targetNode->inputPins) {
+                                if (inputPin.id == pin.connectedPinId) {
+                                    if (executedNodes.find(targetNode->id) == executedNodes.end()) {
+                                        nodesToExecute.push(targetNode.get());
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            iteration++;
+        }
+        
+        if (iteration >= maxIterations) {
+            printf("WARNING: Node execution hit max iterations limit\n");
+        }
+        
+        printf("DEBUG: Logic graph execution completed in %d iterations\n", iteration);
+    }
+
+    void NodeEditorWindow::resetExecution() {
+        for (auto& node : m_nodes) {
+            node->reset();
+        }
+        printf("DEBUG: All nodes reset for execution\n");
+    }
+
+    void NodeEditorWindow::executeNode(Node* node) {
+        if (!node || node->executed) {
+            return;
+        }
+        
+        printf("DEBUG: Executing node %d (%s) of type %d\n", 
+               node->id, node->name.c_str(), static_cast<int>(node->type));
+        
+        // Copy data from connected input pins
+        for (auto& inputPin : node->inputPins) {
+            if (inputPin.connected) {
+                // Find the source pin and copy its data
+                for (const auto& sourceNode : m_nodes) {
+                    for (const auto& outputPin : sourceNode->outputPins) {
+                        if (outputPin.id == inputPin.connectedPinId) {
+                            // Copy data based on pin type
+                            switch (inputPin.dataType) {
+                                case PinDataType::Float:
+                                    if (sourceNode->floatParams.find("Output") != sourceNode->floatParams.end()) {
+                                        node->setFloatParam(inputPin.name, sourceNode->getFloatParam("Output", 0.0f));
+                                    }
+                                    break;
+                                case PinDataType::Int:
+                                    if (sourceNode->intParams.find("Output") != sourceNode->intParams.end()) {
+                                        node->setIntParam(inputPin.name, sourceNode->getIntParam("Output", 0));
+                                    }
+                                    break;
+                                case PinDataType::Bool:
+                                    if (sourceNode->boolParams.find("Output") != sourceNode->boolParams.end()) {
+                                        node->setBoolParam(inputPin.name, sourceNode->getBoolParam("Output", false));
+                                    }
+                                    break;
+                                case PinDataType::String:
+                                    if (sourceNode->stringParams.find("Output") != sourceNode->stringParams.end()) {
+                                        node->setStringParam(inputPin.name, sourceNode->getStringParam("Output", ""));
+                                    }
+                                    break;
+                                default:
+                                    break;
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Execute the node
+        node->execute();
     }
 
 } // namespace NodeEditor
