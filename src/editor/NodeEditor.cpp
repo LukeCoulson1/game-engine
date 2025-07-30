@@ -5954,16 +5954,16 @@ namespace NodeEditor {
         code << "    // Node execution variables\n";
         for (const auto& node : m_nodes) {
             switch (node->type) {
-                case NodeEditor::NodeType::ConstantFloat:
+                case NodeType::ConstantFloat:
                     code << "    static float node_" << node->id << "_value;\n";
                     break;
-                case NodeEditor::NodeType::ConstantInt:
+                case NodeType::ConstantInt:
                     code << "    static int node_" << node->id << "_value;\n";
                     break;
-                case NodeEditor::NodeType::ConstantBool:
+                case NodeType::ConstantBool:
                     code << "    static bool node_" << node->id << "_value;\n";
                     break;
-                case NodeEditor::NodeType::TimerNode:
+                case NodeType::TimerNode:
                     code << "    static float node_" << node->id << "_startTime;\n";
                     code << "    static bool node_" << node->id << "_finished;\n";
                     break;
@@ -5977,16 +5977,16 @@ namespace NodeEditor {
         code << "    static void initializeNodeVariables() {\n";
         for (const auto& node : m_nodes) {
             switch (node->type) {
-                case NodeEditor::NodeType::ConstantFloat:
+                case NodeType::ConstantFloat:
                     code << "        node_" << node->id << "_value = " << node->getFloatParam("value", 0.0f) << "f;\n";
                     break;
-                case NodeEditor::NodeType::ConstantInt:
+                case NodeType::ConstantInt:
                     code << "        node_" << node->id << "_value = " << node->getIntParam("value", 0) << ";\n";
                     break;
-                case NodeEditor::NodeType::ConstantBool:
+                case NodeType::ConstantBool:
                     code << "        node_" << node->id << "_value = " << (node->getBoolParam("value", false) ? "true" : "false") << ";\n";
                     break;
-                case NodeEditor::NodeType::TimerNode:
+                case NodeType::TimerNode:
                     code << "        node_" << node->id << "_startTime = 0.0f;\n";
                     code << "        node_" << node->id << "_finished = false;\n";
                     break;
@@ -6004,21 +6004,21 @@ namespace NodeEditor {
         // Generate execution code for each node type
         for (const auto& node : m_nodes) {
             switch (node->type) {
-                case NodeEditor::NodeType::MathAdd:
-                case NodeEditor::NodeType::MathSubtract:
-                case NodeEditor::NodeType::MathMultiply:
-                case NodeEditor::NodeType::MathDivide:
+                case NodeType::MathAdd:
+                case NodeType::MathSubtract:
+                case NodeType::MathMultiply:
+                case NodeType::MathDivide:
                     generateMathNodeCode(code, node.get());
                     break;
-                case NodeEditor::NodeType::LogicAND:
-                case NodeEditor::NodeType::LogicOR:
-                case NodeEditor::NodeType::LogicNOT:
+                case NodeType::LogicAND:
+                case NodeType::LogicOR:
+                case NodeType::LogicNOT:
                     generateLogicNodeCode(code, node.get());
                     break;
-                case NodeEditor::NodeType::TimerNode:
+                case NodeType::TimerNode:
                     generateTimerNodeCode(code, node.get());
                     break;
-                case NodeEditor::NodeType::OnKeyPress:
+                case NodeType::OnKeyPress:
                     generateKeyPressNodeCode(code, node.get());
                     break;
                 default:
@@ -6046,10 +6046,10 @@ namespace NodeEditor {
         return code.str();
     }
 
-    void NodeEditorWindow::generateMathNodeCode(std::stringstream& code, NodeEditor::Node* node) {
+    void NodeEditorWindow::generateMathNodeCode(std::stringstream& code, Node* node) {
         code << "        // Math Node " << node->id << " (" << getNodeTypeName(node->type) << ")\n";
         switch (node->type) {
-            case NodeEditor::NodeType::MathAdd:
+            case NodeType::MathAdd:
                 code << "        {\n";
                 code << "            float a = " << node->getFloatParam("A", 0.0f) << "f;\n";
                 code << "            float b = " << node->getFloatParam("B", 0.0f) << "f;\n";
@@ -6057,7 +6057,7 @@ namespace NodeEditor {
                 code << "            // Result: " << node->getFloatParam("A", 0.0f) + node->getFloatParam("B", 0.0f) << "f\n";
                 code << "        }\n";
                 break;
-            case NodeEditor::NodeType::MathMultiply:
+            case NodeType::MathMultiply:
                 code << "        {\n";
                 code << "            float a = " << node->getFloatParam("A", 1.0f) << "f;\n";
                 code << "            float b = " << node->getFloatParam("B", 1.0f) << "f;\n";
@@ -6072,10 +6072,10 @@ namespace NodeEditor {
         code << "\n";
     }
 
-    void NodeEditorWindow::generateLogicNodeCode(std::stringstream& code, NodeEditor::Node* node) {
+    void NodeEditorWindow::generateLogicNodeCode(std::stringstream& code, Node* node) {
         code << "        // Logic Node " << node->id << " (" << getNodeTypeName(node->type) << ")\n";
         switch (node->type) {
-            case NodeEditor::NodeType::LogicAND:
+            case NodeType::LogicAND:
                 code << "        {\n";
                 code << "            bool a = " << (node->getBoolParam("A", false) ? "true" : "false") << ";\n";
                 code << "            bool b = " << (node->getBoolParam("B", false) ? "true" : "false") << ";\n";
@@ -6083,7 +6083,7 @@ namespace NodeEditor {
                 code << "            // Result: " << (node->getBoolParam("A", false) && node->getBoolParam("B", false) ? "true" : "false") << "\n";
                 code << "        }\n";
                 break;
-            case NodeEditor::NodeType::LogicOR:
+            case NodeType::LogicOR:
                 code << "        {\n";
                 code << "            bool a = " << (node->getBoolParam("A", false) ? "true" : "false") << ";\n";
                 code << "            bool b = " << (node->getBoolParam("B", false) ? "true" : "false") << ";\n";
@@ -6098,7 +6098,7 @@ namespace NodeEditor {
         code << "\n";
     }
 
-    void NodeEditorWindow::generateTimerNodeCode(std::stringstream& code, NodeEditor::Node* node) {
+    void NodeEditorWindow::generateTimerNodeCode(std::stringstream& code, Node* node) {
         float duration = node->getFloatParam("duration", 1.0f);
         code << "        // Timer Node " << node->id << " (Duration: " << duration << "s)\n";
         code << "        {\n";
@@ -6114,7 +6114,7 @@ namespace NodeEditor {
         code << "        }\n\n";
     }
 
-    void NodeEditorWindow::generateKeyPressNodeCode(std::stringstream& code, NodeEditor::Node* node) {
+    void NodeEditorWindow::generateKeyPressNodeCode(std::stringstream& code, Node* node) {
         const char* keyName = node->getKeyName(node->keyCode);
         code << "        // Key Press Node " << node->id << " (Key: " << keyName << ")\n";
         code << "        {\n";
