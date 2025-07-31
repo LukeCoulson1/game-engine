@@ -8,7 +8,6 @@ A complete 2D game engine built in C++ designed for creating Zelda-like top-down
 
 For comprehensive documentation, see the [Documentation Index](docs/README.md) which includes:
 
-- **[🔧 Fixes](docs/fixes/)** - Bug fixes and issue resolutions
 - **[✨ Features](docs/features/)** - New functionality and capabilities  
 - **[🎮 Systems](docs/systems/)** - Core engine systems documentation
 - **[🛠️ Editor](docs/editor/)** - Editor tools and interfaces
