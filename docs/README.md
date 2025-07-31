@@ -4,32 +4,6 @@ Welcome to the comprehensive documentation for the 2D Game Engine project. This 
 
 ## 📚 Documentation Structure
 
-### 🔧 [Fixes](fixes/)
-Bug fixes and issue resolutions implemented in the project:
-
-- **Player Controller Issues**
-  - [Player Controller Dance Animation Fix](fixes/PLAYER_CONTROLLER_DANCE_ANIMATION_FIX.md) - Eliminated unwanted dance animations
-  - [Continuous Downward Movement Fix](fixes/CONTINUOUS_DOWNWARD_MOVEMENT_FIX.md) - Fixed gravity issues in top-down games
-
-- **Rendering & Graphics**
-  - [Sprite Texture Update Fix](fixes/SPRITE_TEXTURE_UPDATE_FIX.md) - Real-time texture updates in node editor
-  - [Texture Path Serialization Fix](fixes/TEXTURE_PATH_SERIALIZATION_FIX.md) - Proper texture path handling
-
-- **UI & Editor Fixes**
-  - [Camera Control Window Fix](fixes/Camera_Control_Window_Fix.md) - Camera controls improvements
-  - [Coordinate System Fixes](fixes/Coordinate_System_Fix.md) - Screen/world coordinate alignment
-  - [Entity Selection Fix](fixes/Entity_0_Selection_Fix.md) - Entity selection improvements
-  - [Save Selected Button Fix](fixes/SAVE_SELECTED_BUTTON_FIX.md) - Scene saving functionality
-
-- **Procedural Generation**
-  - [Procedural Generation Fix](fixes/PROCEDURAL_GENERATION_FIX.md) - Tile generation improvements
-  - [Procedural Map Persistence Fix](fixes/PROCEDURAL_MAP_PERSISTENCE_FIX.md) - Map state preservation
-  - [Procedural Tile Selection](fixes/Procedural_Tile_Selection_SOLVED.md) - Tile selection system
-
-- **Scene Management**
-  - [Scene Manager Refresh Fix](fixes/SCENE_MANAGER_REFRESH_FIX.md) - Scene window refresh issues
-  - [Scene Window Isolation](fixes/Scene_Window_Isolation_Summary.md) - Multi-window support
-
 ### ✨ [Features](features/)
 New features and functionality added to the engine:
 
@@ -93,12 +67,10 @@ User guides and comprehensive documentation:
 
 1. **Setup**: See [SETUP.md](../SETUP.md) for installation instructions
 2. **Basic Usage**: Check the [guides](guides/) section for tutorials
-3. **Troubleshooting**: Look in [fixes](fixes/) for common issues and solutions
-4. **Advanced Features**: Explore [systems](systems/) for detailed technical documentation
+3. **Advanced Features**: Explore [systems](systems/) for detailed technical documentation
 
 ## 🔍 Finding Documentation
 
-- **Bug Reports**: Check [fixes](fixes/) for known issues and solutions
 - **New Features**: Browse [features](features/) for functionality documentation
 - **Technical Details**: See [systems](systems/) for implementation specifics
 - **User Tutorials**: Visit [guides](guides/) for step-by-step instructions
@@ -108,12 +80,11 @@ User guides and comprehensive documentation:
 
 When adding new documentation:
 
-1. Place bug fixes in `fixes/`
-2. Place new features in `features/`
-3. Place system documentation in `systems/`
-4. Place user guides in `guides/`
-5. Place editor documentation in `editor/`
-6. Update this index file with links to new documentation
+1. Place new features in `features/`
+2. Place system documentation in `systems/`
+3. Place user guides in `guides/`
+4. Place editor documentation in `editor/`
+5. Update this index file with links to new documentation
 
 ## 📊 Project Status
 
