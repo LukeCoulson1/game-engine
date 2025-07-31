@@ -502,6 +502,21 @@ namespace NodeEditor {
             drawParticleNodeContent(nodePos, nodeSize);
         } else if (type == NodeType::OnKeyPress) {
             drawKeyPressNodeContent(nodePos, nodeSize);
+        } else if (type >= NodeType::MathAdd && type <= NodeType::RandomInt) {
+            // All math nodes
+            drawMathNodeContent(nodePos, nodeSize);
+        } else if (type >= NodeType::LogicAND && type <= NodeType::Compare) {
+            // All logic nodes  
+            drawLogicNodeContent(nodePos, nodeSize);
+        } else if (type >= NodeType::ConstantFloat && type <= NodeType::ConstantVector2) {
+            // All constant nodes
+            drawConstantNodeContent(nodePos, nodeSize);
+        } else if (type == NodeType::Branch || type == NodeType::Condition || type == NodeType::Switch) {
+            // Flow control logic nodes
+            drawLogicNodeContent(nodePos, nodeSize);
+        } else if (type >= NodeType::EventTrigger && type <= NodeType::TimerNode) {
+            // All event nodes
+            drawEventNodeContent(nodePos, nodeSize);
         }
         
         // Draw resize handle for selected nodes
@@ -1017,6 +1032,350 @@ namespace NodeEditor {
             case 80: return "P";
             default: return "Unknown";
         }
+    }
+
+    void Node::drawMathNodeContent(ImVec2 nodePos, ImVec2 nodeSize) {
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        
+        // Set up ImGui cursor position for controls
+        ImGui::SetCursorScreenPos(ImVec2(nodePos.x + 10, nodePos.y + 35));
+        ImGui::PushItemWidth(nodeSize.x - 20);
+        
+        // Show different controls based on math node type
+        switch (type) {
+            case NodeType::MathAdd:
+            case NodeType::MathSubtract:
+            case NodeType::MathMultiply:
+            case NodeType::MathDivide:
+            case NodeType::MathPower:
+            case NodeType::MathMin:
+            case NodeType::MathMax:
+            case NodeType::MathDistance:
+            case NodeType::MathDotProduct:
+                // For binary operations, show operation symbol
+                {
+                    std::string opSymbol;
+                    switch (type) {
+                        case NodeType::MathAdd: opSymbol = "+"; break;
+                        case NodeType::MathSubtract: opSymbol = "-"; break;
+                        case NodeType::MathMultiply: opSymbol = "×"; break;
+                        case NodeType::MathDivide: opSymbol = "÷"; break;
+                        case NodeType::MathPower: opSymbol = "^"; break;
+                        case NodeType::MathMin: opSymbol = "min"; break;
+                        case NodeType::MathMax: opSymbol = "max"; break;
+                        case NodeType::MathDistance: opSymbol = "dist"; break;
+                        case NodeType::MathDotProduct: opSymbol = "dot"; break;
+                        default: opSymbol = "?"; break;
+                    }
+                    
+                    // Center the operation symbol
+                    ImVec2 textSize = ImGui::CalcTextSize(opSymbol.c_str());
+                    ImVec2 textPos = ImVec2(
+                        nodePos.x + (nodeSize.x - textSize.x) * 0.5f,
+                        nodePos.y + 35 + (20 - textSize.y) * 0.5f
+                    );
+                    drawList->AddText(textPos, IM_COL32(200, 200, 200, 255), opSymbol.c_str());
+                }
+                break;
+                
+            case NodeType::MathClamp:
+                // Show clamp range if available
+                {
+                    float minVal = getFloatParam("min", 0.0f);
+                    float maxVal = getFloatParam("max", 1.0f);
+                    std::string clampText = "Clamp [" + std::to_string(minVal) + ", " + std::to_string(maxVal) + "]";
+                    
+                    // Allow editing clamp values
+                    if (ImGui::DragFloat(("##min" + std::to_string(id)).c_str(), &minVal, 0.1f)) {
+                        setFloatParam("min", minVal);
+                    }
+                    ImGui::SetCursorScreenPos(ImVec2(nodePos.x + 10, nodePos.y + 55));
+                    if (ImGui::DragFloat(("##max" + std::to_string(id)).c_str(), &maxVal, 0.1f)) {
+                        setFloatParam("max", maxVal);
+                    }
+                }
+                break;
+                
+            case NodeType::MathLerp:
+                // Show lerp visualization
+                {
+                    float t = getFloatParam("t", 0.5f);
+                    std::string lerpText = "Lerp (t=" + std::to_string(t) + ")";
+                    
+                    ImVec2 textSize = ImGui::CalcTextSize(lerpText.c_str());
+                    ImVec2 textPos = ImVec2(
+                        nodePos.x + (nodeSize.x - textSize.x) * 0.5f,
+                        nodePos.y + 45
+                    );
+                    drawList->AddText(textPos, IM_COL32(200, 200, 200, 255), lerpText.c_str());
+                }
+                break;
+                
+            case NodeType::RandomFloat:
+            case NodeType::RandomInt:
+                // Show random range if available
+                {
+                    if (type == NodeType::RandomFloat) {
+                        float minVal = getFloatParam("min", 0.0f);
+                        float maxVal = getFloatParam("max", 1.0f);
+                        std::string randomText = "Random [" + std::to_string(minVal) + ", " + std::to_string(maxVal) + "]";
+                        
+                        ImVec2 textSize = ImGui::CalcTextSize(randomText.c_str());
+                        ImVec2 textPos = ImVec2(
+                            nodePos.x + (nodeSize.x - textSize.x) * 0.5f,
+                            nodePos.y + 45
+                        );
+                        drawList->AddText(textPos, IM_COL32(200, 200, 200, 255), randomText.c_str());
+                    } else {
+                        int minVal = getIntParam("min", 0);
+                        int maxVal = getIntParam("max", 100);
+                        std::string randomText = "Random [" + std::to_string(minVal) + ", " + std::to_string(maxVal) + "]";
+                        
+                        ImVec2 textSize = ImGui::CalcTextSize(randomText.c_str());
+                        ImVec2 textPos = ImVec2(
+                            nodePos.x + (nodeSize.x - textSize.x) * 0.5f,
+                            nodePos.y + 45
+                        );
+                        drawList->AddText(textPos, IM_COL32(200, 200, 200, 255), randomText.c_str());
+                    }
+                }
+                break;
+                
+            default:
+                // For other math nodes, show function name
+                {
+                    std::string funcName;
+                    switch (type) {
+                        case NodeType::MathSin: funcName = "sin"; break;
+                        case NodeType::MathCos: funcName = "cos"; break;
+                        case NodeType::MathAbs: funcName = "abs"; break;
+                        case NodeType::MathNormalize: funcName = "normalize"; break;
+                        default: funcName = "math"; break;
+                    }
+                    
+                    ImVec2 textSize = ImGui::CalcTextSize(funcName.c_str());
+                    ImVec2 textPos = ImVec2(
+                        nodePos.x + (nodeSize.x - textSize.x) * 0.5f,
+                        nodePos.y + 45
+                    );
+                    drawList->AddText(textPos, IM_COL32(200, 200, 200, 255), funcName.c_str());
+                }
+                break;
+        }
+        
+        ImGui::PopItemWidth();
+    }
+
+    void Node::drawLogicNodeContent(ImVec2 nodePos, ImVec2 nodeSize) {
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        
+        // Show logic operation symbol or name
+        std::string logicSymbol;
+        ImU32 symbolColor = IM_COL32(255, 200, 100, 255); // Orange for logic
+        
+        switch (type) {
+            case NodeType::LogicAND: logicSymbol = "AND"; break;
+            case NodeType::LogicOR: logicSymbol = "OR"; break;
+            case NodeType::LogicNOT: logicSymbol = "NOT"; break;
+            case NodeType::LogicXOR: logicSymbol = "XOR"; break;
+            case NodeType::Compare: logicSymbol = "CMP"; break;
+            case NodeType::Branch: logicSymbol = "IF"; symbolColor = IM_COL32(100, 255, 100, 255); break;
+            case NodeType::Condition: logicSymbol = "?"; break;
+            case NodeType::Switch: logicSymbol = "SWITCH"; break;
+            default: logicSymbol = "LOGIC"; break;
+        }
+        
+        // Center the symbol
+        ImVec2 textSize = ImGui::CalcTextSize(logicSymbol.c_str());
+        ImVec2 textPos = ImVec2(
+            nodePos.x + (nodeSize.x - textSize.x) * 0.5f,
+            nodePos.y + 40
+        );
+        drawList->AddText(textPos, symbolColor, logicSymbol.c_str());
+        
+        // For Compare node, show comparison operators
+        if (type == NodeType::Compare) {
+            ImVec2 opPos = ImVec2(nodePos.x + 10, nodePos.y + 60);
+            drawList->AddText(opPos, IM_COL32(180, 180, 180, 255), "> < ==");
+        }
+        
+        // For Branch node, show true/false paths
+        if (type == NodeType::Branch) {
+            ImVec2 truePos = ImVec2(nodePos.x + 10, nodePos.y + 60);
+            ImVec2 falsePos = ImVec2(nodePos.x + nodeSize.x - 50, nodePos.y + 60);
+            drawList->AddText(truePos, IM_COL32(100, 255, 100, 255), "TRUE");
+            drawList->AddText(falsePos, IM_COL32(255, 100, 100, 255), "FALSE");
+        }
+    }
+
+    void Node::drawConstantNodeContent(ImVec2 nodePos, ImVec2 nodeSize) {
+        // Set up ImGui cursor position for controls
+        ImGui::SetCursorScreenPos(ImVec2(nodePos.x + 10, nodePos.y + 35));
+        ImGui::PushItemWidth(nodeSize.x - 20);
+        
+        // Show different input controls based on constant type
+        switch (type) {
+            case NodeType::ConstantFloat:
+                {
+                    float value = getFloatParam("value", 0.0f);
+                    if (ImGui::DragFloat(("##float" + std::to_string(id)).c_str(), &value, 0.1f)) {
+                        setFloatParam("value", value);
+                        // Update the output pin's stored value
+                        if (!outputPins.empty()) {
+                            outputPins[0].floatValue = value;
+                        }
+                    }
+                }
+                break;
+                
+            case NodeType::ConstantInt:
+                {
+                    int value = getIntParam("value", 0);
+                    if (ImGui::DragInt(("##int" + std::to_string(id)).c_str(), &value)) {
+                        setIntParam("value", value);
+                        // Update the output pin's stored value
+                        if (!outputPins.empty()) {
+                            outputPins[0].intValue = value;
+                        }
+                    }
+                }
+                break;
+                
+            case NodeType::ConstantBool:
+                {
+                    bool value = getBoolParam("value", false);
+                    if (ImGui::Checkbox(("##bool" + std::to_string(id)).c_str(), &value)) {
+                        setBoolParam("value", value);
+                        // Update the output pin's stored value
+                        if (!outputPins.empty()) {
+                            outputPins[0].boolValue = value;
+                        }
+                    }
+                    ImGui::SameLine();
+                    ImGui::Text(value ? "TRUE" : "FALSE");
+                }
+                break;
+                
+            case NodeType::ConstantString:
+                {
+                    std::string value = getStringParam("value", "");
+                    char buffer[256];
+                    strncpy(buffer, value.c_str(), sizeof(buffer) - 1);
+                    buffer[sizeof(buffer) - 1] = '\0';
+                    
+                    if (ImGui::InputText(("##string" + std::to_string(id)).c_str(), buffer, sizeof(buffer))) {
+                        setStringParam("value", std::string(buffer));
+                        // Update the output pin's stored value
+                        if (!outputPins.empty()) {
+                            outputPins[0].stringValue = std::string(buffer);
+                        }
+                    }
+                }
+                break;
+                
+            case NodeType::ConstantVector2:
+                {
+                    Vector2 value = {getFloatParam("x", 0.0f), getFloatParam("y", 0.0f)};
+                    
+                    if (ImGui::DragFloat(("X##" + std::to_string(id)).c_str(), &value.x, 0.1f)) {
+                        setFloatParam("x", value.x);
+                    }
+                    
+                    ImGui::SetCursorScreenPos(ImVec2(nodePos.x + 10, nodePos.y + 55));
+                    if (ImGui::DragFloat(("Y##" + std::to_string(id)).c_str(), &value.y, 0.1f)) {
+                        setFloatParam("y", value.y);
+                    }
+                    
+                    // Update the output pin's stored value
+                    if (!outputPins.empty()) {
+                        outputPins[0].vector2Value = value;
+                    }
+                }
+                break;
+                
+            default:
+                {
+                    ImDrawList* drawList = ImGui::GetWindowDrawList();
+                    ImVec2 textPos = ImVec2(nodePos.x + 10, nodePos.y + 40);
+                    drawList->AddText(textPos, IM_COL32(200, 200, 200, 255), "Constant");
+                }
+                break;
+        }
+        
+        ImGui::PopItemWidth();
+    }
+
+    void Node::drawEventNodeContent(ImVec2 nodePos, ImVec2 nodeSize) {
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        
+        // Show event type and relevant information
+        std::string eventText;
+        ImU32 eventColor = IM_COL32(255, 150, 255, 255); // Magenta for events
+        
+        switch (type) {
+            case NodeType::EventTrigger: eventText = "TRIGGER"; break;
+            case NodeType::EventListener: eventText = "LISTEN"; break;
+            case NodeType::OnCollision: eventText = "COLLISION"; break;
+            case NodeType::OnKeyPress: eventText = "KEY PRESS"; break;
+            case NodeType::OnKeyRelease: eventText = "KEY RELEASE"; break;
+            case NodeType::OnMouseClick: eventText = "MOUSE CLICK"; break;
+            case NodeType::OnMouseHover: eventText = "MOUSE HOVER"; break;
+            case NodeType::OnTriggerEnter: eventText = "ENTER"; eventColor = IM_COL32(100, 255, 100, 255); break;
+            case NodeType::OnTriggerExit: eventText = "EXIT"; eventColor = IM_COL32(255, 100, 100, 255); break;
+            case NodeType::OnEntityDestroyed: eventText = "DESTROYED"; break;
+            case NodeType::OnEntitySpawned: eventText = "SPAWNED"; break;
+            case NodeType::TimerNode: eventText = "TIMER"; break;
+            default: eventText = "EVENT"; break;
+        }
+        
+        // Center the event text
+        ImVec2 textSize = ImGui::CalcTextSize(eventText.c_str());
+        ImVec2 textPos = ImVec2(
+            nodePos.x + (nodeSize.x - textSize.x) * 0.5f,
+            nodePos.y + 40
+        );
+        drawList->AddText(textPos, eventColor, eventText.c_str());
+        
+        // Add specific controls for certain event types
+        switch (type) {
+            case NodeType::TimerNode:
+                {
+                    // Allow editing timer duration
+                    ImGui::SetCursorScreenPos(ImVec2(nodePos.x + 10, nodePos.y + 60));
+                    ImGui::PushItemWidth(nodeSize.x - 20);
+                    
+                    float duration = getFloatParam("duration", 1.0f);
+                    if (ImGui::DragFloat(("##duration" + std::to_string(id)).c_str(), &duration, 0.1f, 0.1f, 60.0f, "%.1fs")) {
+                        setFloatParam("duration", duration);
+                    }
+                    
+                    ImGui::PopItemWidth();
+                }
+                break;
+                
+            case NodeType::OnKeyPress:
+            case NodeType::OnKeyRelease:
+                {
+                    // Show which key this event responds to
+                    const char* keyName = getKeyName(keyCode);
+                    std::string keyText = "Key: " + std::string(keyName);
+                    
+                    ImVec2 keyTextSize = ImGui::CalcTextSize(keyText.c_str());
+                    ImVec2 keyTextPos = ImVec2(
+                        nodePos.x + (nodeSize.x - keyTextSize.x) * 0.5f,
+                        nodePos.y + 60
+                    );
+                    drawList->AddText(keyTextPos, IM_COL32(180, 180, 180, 255), keyText.c_str());
+                }
+                break;
+                
+            default:
+                break;
+        }
+        
+        // Add event indicator (small circle or square)
+        ImVec2 indicatorPos = ImVec2(nodePos.x + nodeSize.x - 15, nodePos.y + 10);
+        drawList->AddCircleFilled(indicatorPos, 4.0f, eventColor);
     }
 
     void Node::drawTextureSelectionPopup() {
@@ -1728,6 +2087,73 @@ namespace NodeEditor {
                 break;
             }
                 
+            // Math node execution
+            case NodeType::MathAdd:
+            case NodeType::MathSubtract:
+            case NodeType::MathMultiply:
+            case NodeType::MathDivide:
+            case NodeType::MathPower:
+            case NodeType::MathMin:
+            case NodeType::MathMax:
+            case NodeType::MathSin:
+            case NodeType::MathCos:
+            case NodeType::MathAbs:
+            case NodeType::MathClamp:
+            case NodeType::MathLerp:
+            case NodeType::MathDistance:
+            case NodeType::MathNormalize:
+            case NodeType::MathDotProduct:
+            case NodeType::RandomFloat:
+            case NodeType::RandomInt:
+            {
+                executeMathNode();
+                break;
+            }
+            
+            // Logic node execution
+            case NodeType::LogicAND:
+            case NodeType::LogicOR:
+            case NodeType::LogicNOT:
+            case NodeType::LogicXOR:
+            case NodeType::Compare:
+            case NodeType::Branch:
+            case NodeType::Condition:
+            case NodeType::Switch:
+            {
+                executeLogicNode();
+                break;
+            }
+            
+            // Constant nodes (already have their values set)
+            case NodeType::ConstantFloat:
+            case NodeType::ConstantInt:
+            case NodeType::ConstantBool:
+            case NodeType::ConstantString:
+            case NodeType::ConstantVector2:
+            {
+                // Constants don't need execution - their values are always available
+                printf("DEBUG: Constant node executed - value available on output pin\n");
+                break;
+            }
+            
+            // Event node execution
+            case NodeType::EventTrigger:
+            case NodeType::EventListener:
+            case NodeType::OnCollision:
+            case NodeType::OnKeyPress:
+            case NodeType::OnKeyRelease:
+            case NodeType::OnMouseClick:
+            case NodeType::OnMouseHover:
+            case NodeType::OnTriggerEnter:
+            case NodeType::OnTriggerExit:
+            case NodeType::OnEntityDestroyed:
+            case NodeType::OnEntitySpawned:
+            case NodeType::TimerNode:
+            {
+                executeEventNode();
+                break;
+            }
+                
             default:
                 printf("DEBUG: Node type %d execution not implemented yet\n", static_cast<int>(type));
                 break;
@@ -1762,6 +2188,245 @@ namespace NodeEditor {
     void Node::reset() {
         executed = false;
         executionTime = 0.0f;
+    }
+
+    void Node::executeMathNode() {
+        switch (type) {
+            case NodeType::MathAdd:
+            {
+                float a = (inputPins.size() > 0 && inputPins[0].connected) ? inputPins[0].floatValue : getFloatParam("A", 0.0f);
+                float b = (inputPins.size() > 1 && inputPins[1].connected) ? inputPins[1].floatValue : getFloatParam("B", 0.0f);
+                float result = a + b;
+                if (!outputPins.empty()) outputPins[0].floatValue = result;
+                setFloatParam("Result", result);
+                printf("DEBUG: MathAdd executed - %f + %f = %f\n", a, b, result);
+                break;
+            }
+            case NodeType::MathSubtract:
+            {
+                float a = (inputPins.size() > 0 && inputPins[0].connected) ? inputPins[0].floatValue : getFloatParam("A", 0.0f);
+                float b = (inputPins.size() > 1 && inputPins[1].connected) ? inputPins[1].floatValue : getFloatParam("B", 0.0f);
+                float result = a - b;
+                if (!outputPins.empty()) outputPins[0].floatValue = result;
+                setFloatParam("Result", result);
+                printf("DEBUG: MathSubtract executed - %f - %f = %f\n", a, b, result);
+                break;
+            }
+            case NodeType::MathMultiply:
+            {
+                float a = (inputPins.size() > 0 && inputPins[0].connected) ? inputPins[0].floatValue : getFloatParam("A", 1.0f);
+                float b = (inputPins.size() > 1 && inputPins[1].connected) ? inputPins[1].floatValue : getFloatParam("B", 1.0f);
+                float result = a * b;
+                if (!outputPins.empty()) outputPins[0].floatValue = result;
+                setFloatParam("Result", result);
+                printf("DEBUG: MathMultiply executed - %f * %f = %f\n", a, b, result);
+                break;
+            }
+            case NodeType::MathDivide:
+            {
+                float a = (inputPins.size() > 0 && inputPins[0].connected) ? inputPins[0].floatValue : getFloatParam("A", 1.0f);
+                float b = (inputPins.size() > 1 && inputPins[1].connected) ? inputPins[1].floatValue : getFloatParam("B", 1.0f);
+                float result = (b != 0.0f) ? (a / b) : 0.0f;
+                if (!outputPins.empty()) outputPins[0].floatValue = result;
+                setFloatParam("Result", result);
+                printf("DEBUG: MathDivide executed - %f / %f = %f\n", a, b, result);
+                break;
+            }
+            case NodeType::MathSin:
+            {
+                float value = (inputPins.size() > 0 && inputPins[0].connected) ? inputPins[0].floatValue : getFloatParam("Value", 0.0f);
+                float result = std::sin(value);
+                if (!outputPins.empty()) outputPins[0].floatValue = result;
+                setFloatParam("Result", result);
+                printf("DEBUG: MathSin executed - sin(%f) = %f\n", value, result);
+                break;
+            }
+            case NodeType::MathCos:
+            {
+                float value = (inputPins.size() > 0 && inputPins[0].connected) ? inputPins[0].floatValue : getFloatParam("Value", 0.0f);
+                float result = std::cos(value);
+                if (!outputPins.empty()) outputPins[0].floatValue = result;
+                setFloatParam("Result", result);
+                printf("DEBUG: MathCos executed - cos(%f) = %f\n", value, result);
+                break;
+            }
+            case NodeType::MathAbs:
+            {
+                float value = (inputPins.size() > 0 && inputPins[0].connected) ? inputPins[0].floatValue : getFloatParam("Value", 0.0f);
+                float result = std::abs(value);
+                if (!outputPins.empty()) outputPins[0].floatValue = result;
+                setFloatParam("Result", result);
+                printf("DEBUG: MathAbs executed - abs(%f) = %f\n", value, result);
+                break;
+            }
+            case NodeType::MathMin:
+            {
+                float a = (inputPins.size() > 0 && inputPins[0].connected) ? inputPins[0].floatValue : getFloatParam("A", 0.0f);
+                float b = (inputPins.size() > 1 && inputPins[1].connected) ? inputPins[1].floatValue : getFloatParam("B", 0.0f);
+                float result = std::min(a, b);
+                if (!outputPins.empty()) outputPins[0].floatValue = result;
+                setFloatParam("Result", result);
+                printf("DEBUG: MathMin executed - min(%f, %f) = %f\n", a, b, result);
+                break;
+            }
+            case NodeType::MathMax:
+            {
+                float a = (inputPins.size() > 0 && inputPins[0].connected) ? inputPins[0].floatValue : getFloatParam("A", 0.0f);
+                float b = (inputPins.size() > 1 && inputPins[1].connected) ? inputPins[1].floatValue : getFloatParam("B", 0.0f);
+                float result = std::max(a, b);
+                if (!outputPins.empty()) outputPins[0].floatValue = result;
+                setFloatParam("Result", result);
+                printf("DEBUG: MathMax executed - max(%f, %f) = %f\n", a, b, result);
+                break;
+            }
+            case NodeType::RandomFloat:
+            {
+                float minVal = (inputPins.size() > 0 && inputPins[0].connected) ? inputPins[0].floatValue : getFloatParam("Min", 0.0f);
+                float maxVal = (inputPins.size() > 1 && inputPins[1].connected) ? inputPins[1].floatValue : getFloatParam("Max", 1.0f);
+                
+                static std::random_device rd;
+                static std::mt19937 gen(rd());
+                std::uniform_real_distribution<float> dis(minVal, maxVal);
+                float result = dis(gen);
+                
+                if (!outputPins.empty()) outputPins[0].floatValue = result;
+                setFloatParam("Random", result);
+                printf("DEBUG: RandomFloat executed - random(%f, %f) = %f\n", minVal, maxVal, result);
+                break;
+            }
+            case NodeType::RandomInt:
+            {
+                int minVal = (inputPins.size() > 0 && inputPins[0].connected) ? inputPins[0].intValue : getIntParam("Min", 0);
+                int maxVal = (inputPins.size() > 1 && inputPins[1].connected) ? inputPins[1].intValue : getIntParam("Max", 100);
+                
+                static std::random_device rd;
+                static std::mt19937 gen(rd());
+                std::uniform_int_distribution<int> dis(minVal, maxVal);
+                int result = dis(gen);
+                
+                if (!outputPins.empty()) outputPins[0].intValue = result;
+                setIntParam("Random", result);
+                printf("DEBUG: RandomInt executed - random(%d, %d) = %d\n", minVal, maxVal, result);
+                break;
+            }
+            // Add more math node implementations as needed
+            default:
+                printf("DEBUG: Math node type %d not fully implemented\n", static_cast<int>(type));
+                break;
+        }
+    }
+
+    void Node::executeLogicNode() {
+        switch (type) {
+            case NodeType::LogicAND:
+            {
+                bool a = (inputPins.size() > 0 && inputPins[0].connected) ? inputPins[0].boolValue : getBoolParam("A", false);
+                bool b = (inputPins.size() > 1 && inputPins[1].connected) ? inputPins[1].boolValue : getBoolParam("B", false);
+                bool result = a && b;
+                if (!outputPins.empty()) outputPins[0].boolValue = result;
+                setBoolParam("Result", result);
+                printf("DEBUG: LogicAND executed - %s AND %s = %s\n", 
+                       a ? "true" : "false", b ? "true" : "false", result ? "true" : "false");
+                break;
+            }
+            case NodeType::LogicOR:
+            {
+                bool a = (inputPins.size() > 0 && inputPins[0].connected) ? inputPins[0].boolValue : getBoolParam("A", false);
+                bool b = (inputPins.size() > 1 && inputPins[1].connected) ? inputPins[1].boolValue : getBoolParam("B", false);
+                bool result = a || b;
+                if (!outputPins.empty()) outputPins[0].boolValue = result;
+                setBoolParam("Result", result);
+                printf("DEBUG: LogicOR executed - %s OR %s = %s\n", 
+                       a ? "true" : "false", b ? "true" : "false", result ? "true" : "false");
+                break;
+            }
+            case NodeType::LogicNOT:
+            {
+                bool input = (inputPins.size() > 0 && inputPins[0].connected) ? inputPins[0].boolValue : getBoolParam("Input", false);
+                bool result = !input;
+                if (!outputPins.empty()) outputPins[0].boolValue = result;
+                setBoolParam("Result", result);
+                printf("DEBUG: LogicNOT executed - NOT %s = %s\n", 
+                       input ? "true" : "false", result ? "true" : "false");
+                break;
+            }
+            case NodeType::LogicXOR:
+            {
+                bool a = (inputPins.size() > 0 && inputPins[0].connected) ? inputPins[0].boolValue : getBoolParam("A", false);
+                bool b = (inputPins.size() > 1 && inputPins[1].connected) ? inputPins[1].boolValue : getBoolParam("B", false);
+                bool result = a != b; // XOR is true when inputs are different
+                if (!outputPins.empty()) outputPins[0].boolValue = result;
+                setBoolParam("Result", result);
+                printf("DEBUG: LogicXOR executed - %s XOR %s = %s\n", 
+                       a ? "true" : "false", b ? "true" : "false", result ? "true" : "false");
+                break;
+            }
+            case NodeType::Compare:
+            {
+                float a = (inputPins.size() > 0 && inputPins[0].connected) ? inputPins[0].floatValue : getFloatParam("A", 0.0f);
+                float b = (inputPins.size() > 1 && inputPins[1].connected) ? inputPins[1].floatValue : getFloatParam("B", 0.0f);
+                
+                // Set different output pins for different comparisons
+                if (outputPins.size() > 0) outputPins[0].boolValue = (a > b);  // A > B
+                if (outputPins.size() > 1) outputPins[1].boolValue = (a < b);  // A < B  
+                if (outputPins.size() > 2) outputPins[2].boolValue = (a == b); // A == B
+                
+                setBoolParam("Greater", a > b);
+                setBoolParam("Less", a < b);
+                setBoolParam("Equal", a == b);
+                printf("DEBUG: Compare executed - %f vs %f: >=%s, <=%s, ==%s\n", 
+                       a, b, (a > b) ? "true" : "false", (a < b) ? "true" : "false", (a == b) ? "true" : "false");
+                break;
+            }
+            case NodeType::Branch:
+            {
+                bool condition = (inputPins.size() > 1 && inputPins[1].connected) ? inputPins[1].boolValue : getBoolParam("Condition", false);
+                
+                // Branch doesn't store results, it controls execution flow
+                setBoolParam("Condition", condition);
+                printf("DEBUG: Branch executed - Condition: %s\n", condition ? "true" : "false");  
+                break;
+            }
+            default:
+                printf("DEBUG: Logic node type %d not fully implemented\n", static_cast<int>(type));
+                break;
+        }
+    }
+
+    void Node::executeEventNode() {
+        switch (type) {
+            case NodeType::EventTrigger:
+                printf("DEBUG: EventTrigger executed - Event fired\n");
+                setBoolParam("Triggered", true);
+                break;
+                
+            case NodeType::TimerNode:
+            {
+                float currentTime = ImGui::GetTime();
+                float startTime = getFloatParam("StartTime", currentTime);
+                float duration = getFloatParam("Duration", 1.0f);
+                float elapsed = currentTime - startTime;
+                bool finished = elapsed >= duration;
+                
+                setFloatParam("ElapsedTime", elapsed);
+                setBoolParam("Finished", finished);
+                
+                if (finished && !getBoolParam("WasFinished", false)) {
+                    printf("DEBUG: Timer finished after %.2f seconds\n", elapsed);
+                    setBoolParam("WasFinished", true);
+                }
+                break;
+            }
+            case NodeType::OnKeyPress:
+            case NodeType::OnKeyRelease:
+                // These are handled by input system, just mark as executable
+                printf("DEBUG: Key event node ready - Key: %s\n", getKeyName(keyCode));
+                break;
+                
+            default:
+                printf("DEBUG: Event node type %d ready for execution\n", static_cast<int>(type));
+                break;
+        }
     }
 
     // Parameter accessors
@@ -4229,46 +4894,134 @@ namespace NodeEditor {
                 
             // Math nodes
             case NodeType::MathAdd:
+                headerColor = IM_COL32(100, 150, 100, 255); // Dark green
+                description = "Add two numbers together (A + B)";
+                break;
             case NodeType::MathSubtract:
+                headerColor = IM_COL32(100, 150, 100, 255); // Dark green  
+                description = "Subtract second number from first (A - B)";
+                break;
             case NodeType::MathMultiply:
+                headerColor = IM_COL32(100, 150, 100, 255); // Dark green
+                description = "Multiply two numbers (A × B)";
+                break;
             case NodeType::MathDivide:
+                headerColor = IM_COL32(100, 150, 100, 255); // Dark green
+                description = "Divide first number by second (A ÷ B)";
+                break;
             case NodeType::MathSin:
+                headerColor = IM_COL32(100, 150, 100, 255); // Dark green
+                description = "Calculate sine of input value";
+                break;
             case NodeType::MathCos:
+                headerColor = IM_COL32(100, 150, 100, 255); // Dark green
+                description = "Calculate cosine of input value";
+                break;
             case NodeType::MathAbs:
+                headerColor = IM_COL32(100, 150, 100, 255); // Dark green
+                description = "Get absolute value (remove negative sign)";
+                break;
             case NodeType::MathMin:
+                headerColor = IM_COL32(100, 150, 100, 255); // Dark green
+                description = "Return the smaller of two values";
+                break;
             case NodeType::MathMax:
+                headerColor = IM_COL32(100, 150, 100, 255); // Dark green
+                description = "Return the larger of two values";
+                break;
             case NodeType::MathClamp:
+                headerColor = IM_COL32(100, 150, 100, 255); // Dark green
+                description = "Constrain value between min and max";
+                break;
             case NodeType::MathLerp:
                 headerColor = IM_COL32(100, 150, 100, 255); // Dark green
-                description = "Mathematical operation";
+                description = "Linear interpolation between A and B by factor T";
+                break;
+            case NodeType::RandomFloat:
+                headerColor = IM_COL32(100, 150, 100, 255); // Dark green
+                description = "Generate random floating-point number in range";
+                break;
+            case NodeType::RandomInt:
+                headerColor = IM_COL32(100, 150, 100, 255); // Dark green
+                description = "Generate random integer in range";
                 break;
                 
             // Logic nodes
             case NodeType::LogicAND:
+                headerColor = IM_COL32(150, 100, 100, 255); // Dark red
+                description = "Logical AND - true only if both inputs are true";
+                break;
             case NodeType::LogicOR:
+                headerColor = IM_COL32(150, 100, 100, 255); // Dark red
+                description = "Logical OR - true if either input is true";
+                break;
             case NodeType::LogicXOR:
+                headerColor = IM_COL32(150, 100, 100, 255); // Dark red
+                description = "Logical XOR - true if inputs are different";
+                break;
             case NodeType::LogicNOT:
+                headerColor = IM_COL32(150, 100, 100, 255); // Dark red
+                description = "Logical NOT - inverts input (true becomes false)";
+                break;
+            case NodeType::Compare:
+                headerColor = IM_COL32(150, 100, 100, 255); // Dark red
+                description = "Compare two values (>, <, ==)";
+                break;
             case NodeType::Branch:
                 headerColor = IM_COL32(150, 100, 100, 255); // Dark red
-                description = "Logical operation";
+                description = "Execute different paths based on condition";
                 break;
                 
             // Constant nodes
             case NodeType::ConstantFloat:
+                headerColor = IM_COL32(100, 100, 150, 255); // Dark blue
+                description = "Constant floating-point number value";
+                break;
             case NodeType::ConstantInt:
+                headerColor = IM_COL32(100, 100, 150, 255); // Dark blue
+                description = "Constant integer number value";
+                break;
             case NodeType::ConstantBool:
+                headerColor = IM_COL32(100, 100, 150, 255); // Dark blue
+                description = "Constant boolean value (true/false)";
+                break;
             case NodeType::ConstantString:
+                headerColor = IM_COL32(100, 100, 150, 255); // Dark blue
+                description = "Constant text string value";
+                break;
             case NodeType::ConstantVector2:
                 headerColor = IM_COL32(100, 100, 150, 255); // Dark blue
-                description = "Constant value";
+                description = "Constant 2D vector (X, Y coordinates)";
                 break;
                 
             // Event nodes
+            case NodeType::EventTrigger:
+                headerColor = IM_COL32(150, 150, 100, 255); // Dark yellow
+                description = "Triggers an event when executed";
+                break;
+            case NodeType::EventListener:
+                headerColor = IM_COL32(150, 150, 100, 255); // Dark yellow
+                description = "Listens for and responds to events";
+                break;
             case NodeType::OnKeyPress:
+                headerColor = IM_COL32(150, 150, 100, 255); // Dark yellow
+                description = "Triggers when specified key is pressed";
+                break;
+            case NodeType::OnKeyRelease:
+                headerColor = IM_COL32(150, 150, 100, 255); // Dark yellow
+                description = "Triggers when specified key is released";
+                break;
             case NodeType::OnMouseClick:
+                headerColor = IM_COL32(150, 150, 100, 255); // Dark yellow
+                description = "Triggers when mouse button is clicked";
+                break;
             case NodeType::OnCollision:
                 headerColor = IM_COL32(150, 150, 100, 255); // Dark yellow
-                description = "Event trigger";
+                description = "Triggers when collision is detected";
+                break;
+            case NodeType::TimerNode:
+                headerColor = IM_COL32(150, 150, 100, 255); // Dark yellow
+                description = "Triggers after specified time duration";
                 break;
                 
             // Utility nodes
@@ -5171,27 +5924,24 @@ namespace NodeEditor {
         code << "#pragma once\n\n";
         code << "#include \"../components/Components.h\"\n";
         code << "#include \"../scene/Scene.h\"\n";
-        code << "#include \"../systems/CoreSystems.h\"\n\n";
+        code << "#include \"../systems/CoreSystems.h\"\n";
+        code << "#include <cmath>\n";
+        code << "#include <random>\n\n";
         code << "// Auto-generated from Node Editor\n";
         code << "// Complete game logic systems\n\n";
         code << "class GeneratedGameLogic {\n";
         code << "public:\n";
         code << "    static void initializeGameSystems(Scene* scene) {\n";
         code << "        if (!scene) return;\n\n";
-        code << "        // Initialize core game systems based on Node Editor design\n";
-        code << "        auto* systemManager = scene->getSystemManager();\n";
-        code << "        if (systemManager) {\n";
-        code << "            // Core rendering and physics systems\n";
-        code << "            // systemManager->addSystem<RenderSystem>();\n";
-        code << "            // systemManager->addSystem<PhysicsSystem>();\n";
-        code << "            // systemManager->addSystem<PlayerControllerSystem>();\n";
-        code << "            // systemManager->addSystem<EntitySpawnerSystem>();\n";
-        code << "        }\n\n";
+        code << "        // Initialize variables for node execution\n";
+        code << "        initializeNodeVariables();\n\n";
         code << "        printf(\"INFO: Game logic systems initialized from Node Editor\\n\");\n";
         code << "    }\n\n";
         
         code << "    static void updateGameLogic(Scene* scene, float deltaTime) {\n";
         code << "        if (!scene) return;\n\n";
+        code << "        // Execute node logic in dependency order\n";
+        code << "        executeNodeLogic(scene, deltaTime);\n\n";
         code << "        // Update entity spawners\n";
         code << "        updateEntitySpawners(scene, deltaTime);\n\n";
         code << "        // Update player logic\n";  
@@ -5199,6 +5949,85 @@ namespace NodeEditor {
         code << "    }\n\n";
         
         code << "private:\n";
+        
+        // Generate node variable declarations
+        code << "    // Node execution variables\n";
+        for (const auto& node : m_nodes) {
+            switch (node->type) {
+                case NodeType::ConstantFloat:
+                    code << "    static float node_" << node->id << "_value;\n";
+                    break;
+                case NodeType::ConstantInt:
+                    code << "    static int node_" << node->id << "_value;\n";
+                    break;
+                case NodeType::ConstantBool:
+                    code << "    static bool node_" << node->id << "_value;\n";
+                    break;
+                case NodeType::TimerNode:
+                    code << "    static float node_" << node->id << "_startTime;\n";
+                    code << "    static bool node_" << node->id << "_finished;\n";
+                    break;
+                default:
+                    break;
+            }
+        }
+        code << "\n";
+        
+        // Generate initialization method
+        code << "    static void initializeNodeVariables() {\n";
+        for (const auto& node : m_nodes) {
+            switch (node->type) {
+                case NodeType::ConstantFloat:
+                    code << "        node_" << node->id << "_value = " << node->getFloatParam("value", 0.0f) << "f;\n";
+                    break;
+                case NodeType::ConstantInt:
+                    code << "        node_" << node->id << "_value = " << node->getIntParam("value", 0) << ";\n";
+                    break;
+                case NodeType::ConstantBool:
+                    code << "        node_" << node->id << "_value = " << (node->getBoolParam("value", false) ? "true" : "false") << ";\n";
+                    break;
+                case NodeType::TimerNode:
+                    code << "        node_" << node->id << "_startTime = 0.0f;\n";
+                    code << "        node_" << node->id << "_finished = false;\n";
+                    break;
+                default:
+                    break;
+            }
+        }
+        code << "    }\n\n";
+        
+        // Generate main node execution logic
+        code << "    static void executeNodeLogic(Scene* scene, float deltaTime) {\n";
+        code << "        static float currentTime = 0.0f;\n";
+        code << "        currentTime += deltaTime;\n\n";
+        
+        // Generate execution code for each node type
+        for (const auto& node : m_nodes) {
+            switch (node->type) {
+                case NodeType::MathAdd:
+                case NodeType::MathSubtract:
+                case NodeType::MathMultiply:
+                case NodeType::MathDivide:
+                    generateMathNodeCode(code, node.get());
+                    break;
+                case NodeType::LogicAND:
+                case NodeType::LogicOR:
+                case NodeType::LogicNOT:
+                    generateLogicNodeCode(code, node.get());
+                    break;
+                case NodeType::TimerNode:
+                    generateTimerNodeCode(code, node.get());
+                    break;
+                case NodeType::OnKeyPress:
+                    generateKeyPressNodeCode(code, node.get());
+                    break;
+                default:
+                    break;
+            }
+        }
+        
+        code << "    }\n\n";
+        
         code << "    static void updateEntitySpawners(Scene* scene, float deltaTime) {\n";
         code << "        // EntitySpawner update logic handled by engine's spawner system\n";
         code << "    }\n\n";
@@ -5215,6 +6044,83 @@ namespace NodeEditor {
         code << "};\n\n";
         
         return code.str();
+    }
+
+    void NodeEditorWindow::generateMathNodeCode(std::stringstream& code, Node* node) {
+        code << "        // Math Node " << node->id << " (" << getNodeTypeName(node->type) << ")\n";
+        switch (node->type) {
+            case NodeType::MathAdd:
+                code << "        {\n";
+                code << "            float a = " << node->getFloatParam("A", 0.0f) << "f;\n";
+                code << "            float b = " << node->getFloatParam("B", 0.0f) << "f;\n";
+                code << "            float result = a + b;\n";
+                code << "            // Result: " << node->getFloatParam("A", 0.0f) + node->getFloatParam("B", 0.0f) << "f\n";
+                code << "        }\n";
+                break;
+            case NodeType::MathMultiply:
+                code << "        {\n";
+                code << "            float a = " << node->getFloatParam("A", 1.0f) << "f;\n";
+                code << "            float b = " << node->getFloatParam("B", 1.0f) << "f;\n";
+                code << "            float result = a * b;\n";
+                code << "            // Result: " << node->getFloatParam("A", 1.0f) * node->getFloatParam("B", 1.0f) << "f\n";
+                code << "        }\n";
+                break;
+            default:
+                code << "        // Math operation implementation\n";
+                break;
+        }
+        code << "\n";
+    }
+
+    void NodeEditorWindow::generateLogicNodeCode(std::stringstream& code, Node* node) {
+        code << "        // Logic Node " << node->id << " (" << getNodeTypeName(node->type) << ")\n";
+        switch (node->type) {
+            case NodeType::LogicAND:
+                code << "        {\n";
+                code << "            bool a = " << (node->getBoolParam("A", false) ? "true" : "false") << ";\n";
+                code << "            bool b = " << (node->getBoolParam("B", false) ? "true" : "false") << ";\n";
+                code << "            bool result = a && b;\n";
+                code << "            // Result: " << (node->getBoolParam("A", false) && node->getBoolParam("B", false) ? "true" : "false") << "\n";
+                code << "        }\n";
+                break;
+            case NodeType::LogicOR:
+                code << "        {\n";
+                code << "            bool a = " << (node->getBoolParam("A", false) ? "true" : "false") << ";\n";
+                code << "            bool b = " << (node->getBoolParam("B", false) ? "true" : "false") << ";\n";
+                code << "            bool result = a || b;\n";
+                code << "            // Result: " << (node->getBoolParam("A", false) || node->getBoolParam("B", false) ? "true" : "false") << "\n";
+                code << "        }\n";
+                break;
+            default:
+                code << "        // Logic operation implementation\n";
+                break;
+        }
+        code << "\n";
+    }
+
+    void NodeEditorWindow::generateTimerNodeCode(std::stringstream& code, Node* node) {
+        float duration = node->getFloatParam("duration", 1.0f);
+        code << "        // Timer Node " << node->id << " (Duration: " << duration << "s)\n";
+        code << "        {\n";
+        code << "            if (node_" << node->id << "_startTime == 0.0f) {\n";
+        code << "                node_" << node->id << "_startTime = currentTime;\n";
+        code << "            }\n";
+        code << "            float elapsed = currentTime - node_" << node->id << "_startTime;\n";
+        code << "            if (elapsed >= " << duration << "f && !node_" << node->id << "_finished) {\n";
+        code << "                node_" << node->id << "_finished = true;\n";
+        code << "                printf(\"Timer " << node->id << " finished after %.2fs\\n\", elapsed);\n";
+        code << "                // Timer finished - trigger connected nodes\n";
+        code << "            }\n";
+        code << "        }\n\n";
+    }
+
+    void NodeEditorWindow::generateKeyPressNodeCode(std::stringstream& code, Node* node) {
+        const char* keyName = node->getKeyName(node->keyCode);
+        code << "        // Key Press Node " << node->id << " (Key: " << keyName << ")\n";
+        code << "        {\n";
+        code << "            // Key press handling for key code " << node->keyCode << " (" << keyName << ")\n";
+        code << "            // This would be connected to the input system\n";
+        code << "        }\n\n";
     }
 
     std::string NodeEditorWindow::generateCompleteSceneCode() {

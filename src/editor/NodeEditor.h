@@ -313,6 +313,11 @@ namespace NodeEditor {
         bool canExecute() const;
         void reset();
         
+        // Specialized execution methods
+        void executeMathNode();
+        void executeLogicNode();  
+        void executeEventNode();
+        
         // Parameter accessors
         void setFloatParam(const std::string& name, float value);
         void setIntParam(const std::string& name, int value);
@@ -437,6 +442,10 @@ namespace NodeEditor {
         // Helper methods for code generation
         void generateKeyPressActions(std::stringstream& code, EntityID entityId, Node* entityNode);
         int getKeyCodeFromNode(Node* entityNode);
+        void generateMathNodeCode(std::stringstream& code, Node* node);
+        void generateLogicNodeCode(std::stringstream& code, Node* node);
+        void generateTimerNodeCode(std::stringstream& code, Node* node);
+        void generateKeyPressNodeCode(std::stringstream& code, Node* node);
         
         // Entity dropdown helpers
         std::vector<std::pair<EntityID, std::string>> getSceneEntities() const;

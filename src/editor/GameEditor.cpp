@@ -30,13 +30,14 @@ GameEditor::GameEditor() {
     
     // Initialize procedural generation manager
     m_proceduralManager = std::make_unique<ProceduralGenerationManager>();
-      // Temporarily disable node editor to test for crashes
-    // m_nodeEditor = std::make_unique<NodeEditor::NodeEditorWindow>();    // Initialize scene manager
+    
+    // Initialize node editor
+    m_nodeEditor = std::make_unique<NodeEditor::NodeEditorWindow>();
     
     // Set up callback for code refresh
-    // m_nodeEditor->setCodeRefreshCallback([this]() {
-    //     this->loadCodeFiles();
-    // });
+    m_nodeEditor->setCodeRefreshCallback([this]() {
+        this->loadCodeFiles();
+    });
     
     m_sceneManager = std::make_unique<SceneManager>(this);
     
@@ -175,9 +176,8 @@ void GameEditor::renderUI() {    showMainMenuBar();
     if (m_showAssetBrowser) showAssetBrowser();
     if (m_showConsole) showConsole();
     if (m_showCameraControls) showCameraControls();
-    if (m_showProceduralGeneration) showProceduralGeneration();    
-    // Temporarily disable node editor to test for crashes
-    // if (m_showNodeEditor) showNodeEditor();
+    if (m_showProceduralGeneration) showProceduralGeneration();
+    if (m_showNodeEditor) showNodeEditor();
     if (m_showSceneManager) showSceneManager();
     if (m_showGameLogicWindow) showGameLogicWindow();
     if (m_showCollisionEditor) showCollisionEditor();
